@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Video review</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="app">
+    <main class="left">
+      <header class="topbar">
+        <label class="picker">
+          <span class="sr-only">Video</span>
+          <select id="videoSelect" aria-label="Video to review"></select>
+        </label>
+        <button id="uploadBtn" title="Upload a video (or drop it onto the page)">⬆ Upload video</button>
+        <button id="transcriptBtn" title="Attach the voice-over or subtitles (.json, .srt, .vtt) to this video">＋ Transcript</button>
+        <input type="file" id="uploadInput" accept="video/*,.mp4,.m4v,.webm,.mov,.ogv,.mkv" hidden>
+        <input type="file" id="transcriptInput" accept=".json,.srt,.vtt" hidden>
+        <span class="muted meta" id="meta"></span>
+      </header>
+      <div class="upload-bar" id="uploadBar" hidden><div class="upload-fill" id="uploadFill"></div><span id="uploadText"></span></div>
+
+      <div class="stage" id="stage" aria-label="Video. Click to pin a change, drag to mark an area.">
+        <video id="video" preload="auto" playsinline></video>
+        <div class="overlay" id="overlay"></div>
+        <div class="hint" id="hint">Pause, then click to pin a change or drag to mark an area</div>
+        <div class="empty-stage" id="emptyStage" hidden>
+          <div class="empty-icon">🎬</div>
+          <h2>Drop a video here</h2>
+          <p class="muted">or <button class="link" id="emptyUpload">choose a file</button> (MP4, WebM, MOV…).
+            Uploading a new render with the same file name keeps its notes.</p>
+        </div>
+      </div>
+
+      <div class="timeline" id="timeline" title="Click to seek">
+        <div class="timeline-progress" id="progress"></div>
+        <div class="timeline-markers" id="markers"></div>
+      </div>
+
+      <div class="controls">
+        <button id="play" title="Play / pause (Space)">▶ Play</button>
+        <button id="back" title="1 frame back (←)">◀ 1f</button>
+        <button id="fwd" title="1 frame forward (→)">1f ▶</button>
+        <span class="time" id="time">00:00.00</span>
+        <span class="muted" id="frame"></span>
+        <span class="spacer"></span>
+        <label class="muted">Speed
+          <select id="speed">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2">2×</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="voice" id="voice" aria-live="polite"></div>
+
+      <p class="keys muted">
+        <kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> 1 frame · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 1 s ·
+        <kbd>,</kbd><kbd>.</kbd> previous / next note · <kbd>Esc</kbd> cancel ·
+        timecodes are <code>MM:SS.FF</code> (FF = frame), like Remotion Studio
+      </p>
+    </main>
+
+    <aside class="side">
+      <div class="side-head">
+        <h2>Changes <span class="muted" id="count"></span></h2>
+        <label class="muted toggle"><input type="checkbox" id="showDone" checked> show done</label>
+      </div>
+      <div class="list" id="list"></div>
+      <footer class="side-foot">
+        <div class="row">
+          <button class="primary" id="save" title="Notes are also saved automatically">Save</button>
+          <button id="copyPrompt" title="Copy a ready-made prompt for Claude or another AI agent">Copy prompt for Claude</button>
+        </div>
+        <div class="row">
+          <button id="exportZip" title="Download notes, REVIEW.md, screenshots and transcript as a zip, e.g. to upload to claude.ai">⬇ Download review (.zip)</button>
+          <button id="newRound" title="Move this round to rounds/ and start with an empty list">New round</button>
+        </div>
+        <div class="status" id="status" role="status"></div>
+        <div class="muted small" id="folder"></div>
+        <div class="credits small muted">
+          Made with <span class="heart" aria-label="love">♥</span> by
+          <a href="https://github.com/matbmoser" target="_blank" rel="noopener noreferrer">Mathias Brunkow Moser</a> ·
+          <button class="link" id="coffee" aria-haspopup="dialog">☕ Buy me a coffee</button>
+        </div>
+      </footer>
+    </aside>
+  </div>
+
+  <div class="dropzone" id="dropzone" hidden><div>Drop to upload</div></div>
+
+  <dialog class="coffee-dialog" id="coffeeDialog" aria-labelledby="coffeeTitle">
+    <button class="close" id="coffeeClose" aria-label="Close">✕</button>
+    <h2 id="coffeeTitle">☕ Buy me a coffee</h2>
+    <p>If this tool saves you time, you can
+      <a href="https://paypal.me/mathiasbrunkowmoser" target="_blank" rel="noopener noreferrer">buy me a coffee with PayPal</a>.
+      Scan the code or click the link. Thank you!</p>
+    <img src="/static/buymeacoffeepaypal.png" alt="PayPal QR code to buy Mathias a coffee" width="260" height="260">
+    <p class="muted small">Made with <span class="heart">♥</span> by
+      <a href="https://github.com/matbmoser" target="_blank" rel="noopener noreferrer">Mathias Brunkow Moser</a></p>
+  </dialog>
+  <script src="/static/app.js"></script>
+</body>
+</html>
