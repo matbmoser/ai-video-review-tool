@@ -128,9 +128,15 @@ def test_upload_video_keeps_notes(server, workspace, note_factory):
 def test_upload_rejections(server):
     res, _ = request(server, "PUT", "/api/videos/evil.exe", body=b"MZ", headers={"Content-Type": "video/mp4"})
     assert res.status == 400
-    res, _ = request(server, "PUT", "/api/videos/big.mp4", body=b"x" * (1024 * 1024 + 1),
-                     headers={"Content-Type": "video/mp4"})
-    assert res.status == 413
+    # announce a body over the limit; the server answers 413 before reading it
+    conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+    conn.putrequest("PUT", "/api/videos/big.mp4", skip_host=True)
+    conn.putheader("Host", f"127.0.0.1:{server.server_address[1]}")
+    conn.putheader("Content-Type", "video/mp4")
+    conn.putheader("Content-Length", str(1024 * 1024 + 1))
+    conn.endheaders()
+    assert conn.getresponse().status == 413
+    conn.close()
     res, _ = request(server, "PUT", "/api/videos/x.mp4", body=b"x", headers={"Origin": "https://evil.example"})
     assert res.status == 403
 
