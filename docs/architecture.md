@@ -72,7 +72,7 @@ open in your browser may be hostile:
 
 ## Design choices
 
-- **Standard library only**, so it runs anywhere Python 3.9+ runs, including locked-down machines.
+- **Standard library only**, so it runs anywhere Python 3.10+ runs, including locked-down machines.
 - **Marks as fractions** of the frame, so a review of a half-resolution preview applies to the final render.
 - **Markdown plus JSON**: JSON for exact values and scripts, Markdown because agents (and people) read it
   well, screenshots because agents can look at images.

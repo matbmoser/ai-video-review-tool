@@ -32,7 +32,7 @@ video your browser can play.
 
 ## Quick start
 
-Requirements: Python 3.9+ and a modern browser (Chrome, Edge, Safari or Firefox).
+Requirements: Python 3.10+ and a modern browser (Chrome, Edge, Safari or Firefox).
 
 ```bash
 # install (from GitHub)

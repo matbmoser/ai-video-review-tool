@@ -27,11 +27,11 @@ ruff check .     # lint
 pytest           # tests
 ```
 
-Both run in CI on every pull request (Python 3.9–3.13 on Linux, plus macOS and Windows).
+Both run in CI on every pull request (Python 3.10–3.14 on Linux, plus macOS and Windows).
 
 ## Guidelines
 
-- **No runtime dependencies.** The tool must keep running on a plain Python 3.9+ installation.
+- **No runtime dependencies.** The tool must keep running on a plain Python 3.10+ installation.
 - **No external requests from the page.** Everything is served from the package (the CSP enforces this).
 - **Keep the output format stable.** `notes.json` is read by agents and scripts. Additive changes are
   fine; anything else needs a new `schemaVersion` and a note in `CHANGELOG.md` and

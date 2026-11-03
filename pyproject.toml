@@ -9,7 +9,7 @@ description = "Frame-accurate review notes for AI-generated videos, saved in a f
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Mathias Brunkow Moser" }]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = []
 keywords = ["video", "review", "remotion", "claude", "ai", "annotation", "feedback"]
 classifiers = [
@@ -47,7 +47,7 @@ addopts = "-q"
 
 [tool.ruff]
 line-length = 120
-target-version = "py39"
+target-version = "py310"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
