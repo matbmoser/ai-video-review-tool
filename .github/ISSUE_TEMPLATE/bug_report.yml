@@ -1,0 +1,35 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. video-review out/video.mp4 --transcript voice.json
+        2. Click on …
+        3. …
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `video-review --version`
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Operating system, Python version, browser
+      placeholder: macOS 15, Python 3.12, Chrome 131
+  - type: markdown
+    attributes:
+      value: "Please do not attach confidential videos or review folders. For security issues use the private reporting described in SECURITY.md."
