@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Review output and media (your videos and notes stay on your machine)
+*.review/
+*.mp4
+*.mov
+*.webm
+!examples/**/*.json
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Secrets – never commit these
+.env
+.env.*
+*.pem
+*.key
+
+# Keep the example review in the repository
+!examples/sample.review/
