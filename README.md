@@ -35,6 +35,21 @@ video your browser can play.
 - **Local and private**: a tiny Python server with **no dependencies**, listening on `localhost` only.
   Your video and notes never leave your machine.
 
+## Try it in your browser
+
+**<https://matbmoser.github.io/ai-video-review-tool/>**: no install. Open a video from your computer (it is
+not uploaded anywhere), leave your notes, then download the review as a zip or copy it into a Claude chat.
+It even has the ✦ Claude chat with your own API key.
+
+| | Browser version | Installed tool (`video-review`) |
+| --- | --- | --- |
+| Review videos, pins and boxes, transcripts, rounds | ✓ | ✓ |
+| Where notes are saved | in your browser (download the zip) | `<video>.review/` next to the video |
+| ✦ Claude chat with your API key | ✓ (directly from the browser) | ✓ |
+| **Claude Code** in the side panel, in your project | – | ✓ |
+| **MCP server** for the Claude desktop app | – | ✓ |
+| Claude Code reads the review folder directly | after unzipping | ✓ |
+
 ## Quick start
 
 Requirements: Python 3.10+ and a modern browser (Chrome, Edge, Safari or Firefox).
@@ -219,6 +234,10 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
 - The ✦ Claude panel controls a terminal and your API key, so it is only offered on `localhost` and every
   request needs a random per-start token that other websites cannot read. It is turned off with
   `--host`; `--no-terminal` and `--no-chat` turn the parts off.
+- **The browser version** at github.io runs entirely in your browser: the video is opened from your disk
+  and never uploaded, notes and screenshots are kept in the browser's storage (IndexedDB) on your device,
+  and the only request it makes is the one to `api.anthropic.com` when you use the chat (your key is kept in
+  the page's memory only).
 - Your videos and review folders are ignored by this repository's `.gitignore`. Keep them out of
   public repos if they are confidential.
 

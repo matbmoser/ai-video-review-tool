@@ -1,5 +1,22 @@
 # Usage
 
+## Without installing: the browser version
+
+<https://matbmoser.github.io/ai-video-review-tool/> is the same review page, running only in your browser.
+
+- **📂 Open video** (or drop a file) opens a video from your computer. It is not uploaded; the browser
+  plays the file directly.
+- Notes, screenshots, transcripts and rounds are saved in the browser (IndexedDB), per video file name.
+  After a reload the notes are still there; open the same video file again to continue.
+- **⬇ Download review (.zip)** gives you the same `<video>.review/` folder the installed tool writes
+  (`notes.json`, `REVIEW.md`, `shots/`, `rounds/`). Unzip it next to your project and **Copy prompt for
+  Claude Code** tells Claude Code where to find it. **Copy for Claude chat** works as in the installed tool.
+- Add `?fps=25` to the address for renders that are not 30 fps.
+- The ✦ Claude panel has the chat with your own API key (sent from your browser to `api.anthropic.com`,
+  kept in memory only). Claude Code in the panel and the MCP server need the installed tool.
+- The notes stay in the browser you used (and are removed if you clear its site data). Download the zip
+  for anything you want to keep.
+
 ## Install
 
 The tool is a single Python package without dependencies.

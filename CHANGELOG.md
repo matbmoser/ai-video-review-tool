@@ -31,7 +31,13 @@ All notable changes to this project are documented here. The format follows
     off, a note when an answer reaches the length limit, a size budget for screenshots
   - picks up a restarted server's session token by itself; error bubbles are not sent back to Claude
 
+- **Browser version on GitHub Pages** (<https://matbmoser.github.io/ai-video-review-tool/>): the review page
+  without installing anything. Videos are opened from disk and never uploaded, notes are kept in the browser,
+  the review downloads as the same zip, and the chat calls the API directly with your key. Built by
+  `scripts/build_pages.py` and deployed by `.github/workflows/pages.yml`.
+
 ### Changed
+- The page talks to its storage through one backend object (the server, or the browser in the Pages version).
 - "Copy prompt for Claude" is now "Copy prompt for Claude Code" (both copy buttons stay).
 - The Content-Security-Policy allows inline styles (needed by xterm.js and Deep Chat); scripts are still
   limited to the tool's own files.

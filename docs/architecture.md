@@ -18,6 +18,21 @@ src/video_review/
     └── vendor/     xterm.js + fit addon, Deep Chat (MIT, shipped as files, loaded on first use)
 ```
 
+## The browser version (GitHub Pages)
+
+`scripts/build_pages.py` copies `static/` into `_site/` and adds `browser-backend.js` and a generated
+`config.js` (change types, models and the chat's system prompt, taken from the Python package so both
+versions say the same). The workflow `.github/workflows/pages.yml` builds and deploys it on every push.
+
+`app.js` talks to its storage only through one `backend` object. With the server it calls the HTTP API
+below; in the browser version `browser-backend.js` provides the same methods: notes and screenshots in
+IndexedDB (`reviews` and `blobs` stores), videos as object URLs of the opened files (kept in memory only),
+transcript parsing, `REVIEW.md` (the same text as `store.render_markdown`, checked by the end-to-end test)
+and the zip (written in JavaScript, uncompressed). `claude.js` hides the Claude Code tab and gives Deep Chat
+a stream handler that calls the Messages API directly (`anthropic-dangerous-direct-browser-access`), with
+the same retries and limits as `claude_api.py`. The page sets its Content-Security-Policy in a `<meta>`
+tag: scripts only from the site, connections only to the site and `api.anthropic.com`.
+
 ## Flow
 
 1. `video-review [VIDEO | FOLDER]` creates a `Workspace` for the folder (one `ReviewStore` per video in
