@@ -7,6 +7,7 @@
   <title>Video review</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
 </head>
 <body>
   <div class="app">
@@ -21,6 +22,9 @@
         <input type="file" id="uploadInput" accept="video/*,.mp4,.m4v,.webm,.mov,.ogv,.mkv" hidden>
         <input type="file" id="transcriptInput" accept=".json,.srt,.vtt" hidden>
         <span class="muted meta" id="meta"></span>
+        <span class="spacer"></span>
+        <button class="claude-btn" id="claudeBtn" aria-controls="drawer" aria-expanded="false"
+                title="Open Claude next to the review: Claude Code in a terminal, or a chat with your API key">✦ Claude</button>
       </header>
       <div class="upload-bar" id="uploadBar" hidden><div class="upload-fill" id="uploadFill"></div><span id="uploadText"></span></div>
 
@@ -77,6 +81,9 @@
       <footer class="side-foot">
         <div class="row">
           <button class="primary" id="save" title="Notes are also saved automatically">Save</button>
+          <button class="claude-btn" id="sendClaude" title="Open the Claude drawer and send the review to Claude Code (or to the API chat)">✦ Send to Claude</button>
+        </div>
+        <div class="row">
           <button id="copyPrompt" title="Copy a prompt for Claude Code or another agent that can read the review folder">Copy prompt for Claude Code</button>
           <button id="copyChat" title="Copy the prompt and the whole review as text, to paste into a Claude chat (claude.ai, desktop or mobile app)">Copy for Claude chat</button>
         </div>
@@ -95,6 +102,55 @@
     </aside>
   </div>
 
+  <aside class="drawer" id="drawer" aria-label="Claude" hidden>
+    <div class="drawer-resize" id="drawerResize" role="separator" aria-orientation="vertical" tabindex="0"
+         aria-label="Resize the Claude panel" title="Drag to resize · double-click to reset"></div>
+    <header class="drawer-head">
+      <div class="tabs" role="tablist" aria-label="How to talk to Claude">
+        <button role="tab" id="tabCode" aria-controls="paneCode" aria-selected="true">Claude Code</button>
+        <button role="tab" id="tabChat" aria-controls="paneChat" aria-selected="false">Chat (API key)</button>
+      </div>
+      <span class="spacer"></span>
+      <button class="icon" id="drawerFull" title="Full screen" aria-pressed="false">⤢</button>
+      <button class="icon" id="drawerClose" title="Close the panel (Claude keeps running)" aria-label="Close">✕</button>
+    </header>
+
+    <section class="pane" id="paneCode" role="tabpanel" aria-labelledby="tabCode">
+      <div class="pane-bar">
+        <span class="muted small grow" id="termInfo">Claude Code</span>
+        <button class="primary" id="termSend" title="Ask Claude Code to implement the open notes of this video">Send review</button>
+        <button id="termStart" title="Start Claude Code in the project folder">Start</button>
+        <button id="termStop" title="Stop Claude Code">Stop</button>
+      </div>
+      <div class="pane-msg" id="termMsg" hidden></div>
+      <div class="term" id="term"></div>
+    </section>
+
+    <section class="pane" id="paneChat" role="tabpanel" aria-labelledby="tabChat" hidden>
+      <div class="pane-bar">
+        <select id="chatModel" aria-label="Model"></select>
+        <label class="toggle muted" title="Add the open notes and their screenshots of the current video to the conversation">
+          <input type="checkbox" id="chatReview" checked> include review</label>
+        <span class="spacer"></span>
+        <button class="primary" id="chatSend" title="Ask Claude to go through the open notes">Send review</button>
+        <button id="chatKeyBtn" title="Set or change your Anthropic API key">API key</button>
+      </div>
+      <form class="key-form" id="keyForm" hidden autocomplete="off">
+        <label for="keyInput">Your Anthropic API key</label>
+        <div class="row">
+          <input type="password" id="keyInput" placeholder="sk-ant-…" spellcheck="false" autocomplete="off">
+          <button class="primary" type="submit">Use key</button>
+          <button type="button" id="keyForget" hidden>Forget</button>
+        </div>
+        <p class="muted small">Kept only in the memory of the local review server (never saved, never sent to
+          the page again) and sent only to api.anthropic.com. Or start the tool with <code>ANTHROPIC_API_KEY</code> set.
+          Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>.</p>
+      </form>
+      <div class="pane-msg" id="chatMsg" hidden></div>
+      <div class="chat-host" id="chatHost"></div>
+    </section>
+  </aside>
+
   <div class="dropzone" id="dropzone" hidden><div>Drop to upload</div></div>
 
   <dialog class="coffee-dialog" id="coffeeDialog" aria-labelledby="coffeeTitle">
@@ -108,5 +164,6 @@
       <a href="https://github.com/matbmoser" target="_blank" rel="noopener noreferrer">Mathias Brunkow Moser</a></p>
   </dialog>
   <script src="/static/app.js"></script>
+  <script src="/static/claude.js"></script>
 </body>
 </html>

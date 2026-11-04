@@ -147,7 +147,7 @@
     $("emptyStage").hidden = !empty;
     $("hint").hidden = empty;
     stage.classList.toggle("is-empty", empty);
-    for (const id of ["transcriptBtn", "save", "copyPrompt", "copyChat", "exportZip", "newRound", "play", "back", "fwd"]) {
+    for (const id of ["transcriptBtn", "save", "sendClaude", "copyPrompt", "copyChat", "exportZip", "newRound", "play", "back", "fwd"]) {
       $(id).disabled = empty;
     }
     if (empty) {
@@ -320,6 +320,7 @@
   }
 
   document.addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("#drawer")) return;  // the terminal and the chat get their own keys
     if (["TEXTAREA", "SELECT", "INPUT"].includes(e.target.tagName)) {
       if (e.key === "Escape") e.target.blur();
       return;
@@ -382,7 +383,7 @@
     note.preview = note.shot;
     state.notes.push(note);
     state.activeId = note.id;
-    render(); renderMarkers(); markDirty();
+    render(); renderMarkers(); drawMarks(); markDirty();
     const ta = document.querySelector(`.note[data-id="${note.id}"] textarea`);
     if (ta) { ta.focus(); ta.scrollIntoView({block: "nearest"}); }
   }
@@ -396,7 +397,7 @@
     note.shot = snapshot(note);
     note.preview = note.shot;
     state.activeId = note.id;
-    render(); renderMarkers(); markDirty();
+    render(); renderMarkers(); drawMarks(); markDirty();
     setStatus(`Note ${note.id} moved to ${note.time}.`, "busy");
   }
 
@@ -605,16 +606,21 @@
     setStatus("Downloading the review as a zip. Attach it to Claude together with the prompt.", "ok");
   };
 
-  $("copyPrompt").onclick = async () => {
-    if (state.dirty) await save();
+  /** the prompt for an agent that can read the review folder (Claude Code) */
+  function codePrompt(separator = "\n") {
     const folder = state.config.reviewFolder;
     const open = state.notes.filter((n) => n.status !== "done").length;
-    const prompt = [
+    return [
       `Please implement my video review of ${state.name} in ${folder}/ (full path: ${state.config.reviewPath}).`,
       `Read ${folder}/REVIEW.md (and notes.json for exact values) and look at every screenshot in ${folder}/shots/.`,
       `There are ${open} open note(s). Each note is one change at an exact frame (${state.fps} fps); the red pin or box shows where.`,
       "Implement all open notes, then tell me per note number what you changed, and ask if a note is unclear.",
-    ].join("\n");
+    ].join(separator);
+  }
+
+  $("copyPrompt").onclick = async () => {
+    if (state.dirty) await save();
+    const prompt = codePrompt();
     try {
       await navigator.clipboard.writeText(prompt);
       setStatus("Prompt copied. Paste it into Claude.", "ok");
@@ -661,6 +667,17 @@
   $("coffeeClose").onclick = () => coffee.close();
   coffee.addEventListener("click", (e) => { if (e.target === coffee) coffee.close(); });
 
+  // what the Claude drawer (claude.js) needs from the review
+  window.VideoReview = {
+    get name() { return state.name; },
+    get config() { return state.config; },
+    get workspace() { return state.workspace; },
+    openNotes: () => state.notes.filter((n) => n.status !== "done").length,
+    save: async () => { if (state.dirty || state.saving) await save(); },
+    codePrompt,
+    setStatus,
+  };
+
   // ── start-up ─────────────────────────────────────────────────────────────────────────────
   (async () => {
     try {
@@ -668,6 +685,7 @@
       const wanted = new URL(location.href).searchParams.get("video");
       const names = ws.videos.map((v) => v.name);
       await openVideo(names.includes(wanted) ? wanted : names[0] || null);
+      document.dispatchEvent(new CustomEvent("review:ready"));
     } catch (err) {
       setStatus(`Could not load the review: ${err.message}`, "error");
     }
