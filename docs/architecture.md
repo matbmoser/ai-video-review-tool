@@ -1,7 +1,8 @@
 # Architecture
 
 The tool is deliberately small: a Python standard-library HTTP server and a static page without a build
-step. There is nothing to install besides Python, and nothing is downloaded at runtime.
+step. There is nothing to install besides Python, and nothing is downloaded at runtime (the two browser
+libraries of the ✦ Claude panel ship with the package).
 
 ```text
 src/video_review/
@@ -9,9 +10,12 @@ src/video_review/
 ├── server.py       HTTP routes, range requests, security checks
 ├── workspace.py    the folder of videos: listing, uploads, transcripts, zip export
 ├── mcp.py          MCP server (JSON-RPC over stdio) for Claude: list / get reviews, set note status
+├── terminal.py     the ✦ Claude panel's terminal: Claude Code in a pseudo-terminal (POSIX)
+├── claude_api.py   the ✦ Claude panel's chat: Anthropic Messages API client (stdlib, streaming)
 ├── store.py        validation, notes.json / REVIEW.md / shots, review rounds (one store per video)
 ├── transcript.py   JSON / SRT / WebVTT parsing
-└── static/         index.html, app.css, app.js (the review UI), favicon, images
+└── static/         index.html, app.css, app.js (the review UI), claude.js (the panel), favicon, images
+    └── vendor/     xterm.js + fit addon, Deep Chat (MIT, shipped as files, loaded on first use)
 ```
 
 ## Flow
@@ -50,6 +54,30 @@ src/video_review/
 | GET | `/api/videos/<v>/markdown` | `REVIEW.md` as text |
 | GET | `/api/videos/<v>/export` | the review folder (and transcript) as a zip |
 
+### ✦ Claude panel
+
+Only offered when the server listens on a loopback address. `/api/workspace` returns a random `token`
+(created at start-up); every request below needs it, as the `X-Review-Token` header (or `token=` for the
+event stream, which `EventSource` cannot add headers to).
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/api/claude` | `{terminal: {available, reason, command, cwd, running, exitCode}, chat: {enabled, reason, configured, source, model, models}}` |
+| POST | `/api/terminal/start` | `{cols, rows}`: start `--claude-command` in `--project` (no-op if running) |
+| POST | `/api/terminal/send` | `{text, cols, rows}`: start Claude Code with `text` as first message, or paste it into the running session and press Enter |
+| POST | `/api/terminal/input` | `{data}`: keystrokes from xterm.js |
+| POST | `/api/terminal/resize` | `{cols, rows}` |
+| POST | `/api/terminal/stop` | SIGHUP, then SIGKILL, to the program's process group |
+| GET | `/api/terminal/stream?offset=N&token=…` | server-sent events: `data: <base64 output>` with `id: <offset>`, then `event: exit`. The last 2 MB are kept, so a reloaded page replays them from offset 0. |
+| POST | `/api/claude/key` | `{key}` sets the API key in memory, `{key: null}` forgets it |
+| POST | `/api/claude/chat` | Deep Chat request `{messages: [{role, text}], video, model, review}`; answers with server-sent events `data: {"text": …}` or `data: {"error": …}` |
+
+The terminal is a pseudo-terminal (`os.openpty`) whose program becomes the session leader with the pty as
+controlling terminal, so Claude Code's interactive UI, colors, resizing and Ctrl+C work. The chat turns
+Deep Chat's messages into a Messages API request (roles alternated, the review prepended to the first user
+message as text plus base64 image blocks with `cache_control`), sends it with `urllib` (which honours
+`HTTPS_PROXY`) and forwards the `text_delta` events.
+
 ## MCP server
 
 `video-review FOLDER --mcp` speaks the [Model Context Protocol](https://modelcontextprotocol.io) over
@@ -78,12 +106,19 @@ open in your browser may be hostile:
   (`--max-upload-mb`) and can be turned off (`--no-upload`). Transcripts are parsed before they are stored.
 - **Strict validation** of every saved note (see [review-format.md](review-format.md)), request body
   limit of 200 MB for JSON, screenshot limit of 8 MB.
-- **Content-Security-Policy** `default-src 'self'` without inline scripts or styles, plus `nosniff`,
-  `no-referrer` and `frame-ancestors 'none'`.
+- **Content-Security-Policy** `default-src 'self'` without inline scripts and without `eval`, plus
+  `nosniff`, `no-referrer` and `frame-ancestors 'none'`. Inline *styles* are allowed because xterm.js
+  and the Deep Chat web component set them.
+- **The ✦ Claude panel** can run a program and spend API credits, so: it is turned off when the server is
+  reachable from other machines (`--host`); every request needs the per-start token, which other
+  websites cannot read (no CORS) and which forces a CORS preflight they cannot pass; the program is fixed
+  on the command line (the page cannot choose what runs); the API key is held in memory only, never
+  logged, never returned to the page, and only sent to `api.anthropic.com`.
 
 ## Design choices
 
-- **Standard library only**, so it runs anywhere Python 3.10+ runs, including locked-down machines.
+- **Standard library only**, so it runs anywhere Python 3.10+ runs, including locked-down machines. The
+  two browser libraries of the ✦ Claude panel are vendored files, not a build step.
 - **Marks as fractions** of the frame, so a review of a half-resolution preview applies to the final render.
 - **Markdown plus JSON**: JSON for exact values and scripts, Markdown because agents (and people) read it
   well, screenshots because agents can look at images.

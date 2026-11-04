@@ -18,6 +18,8 @@ video-review path/to/video.mp4 --transcript examples/transcript.json --open
 ```
 
 The UI is plain HTML/CSS/JS in `src/video_review/static/`; reload the page to see changes (no build step).
+Third-party browser code lives in `static/vendor/` (see its README); do not edit those files, update them.
+The terminal tests need macOS or Linux and are skipped on Windows.
 Set `VIDEO_REVIEW_DEBUG=1` to log every request to the terminal.
 
 ## Checks

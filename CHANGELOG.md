@@ -11,9 +11,25 @@ All notable changes to this project are documented here. The format follows
 - "Copy for Claude chat" button: copies the prompt and the whole review as text for claude.ai and the apps.
 - `GET /api/videos/<v>/markdown` returns `REVIEW.md` as text.
 - Documentation for every way to use the tool with Claude: Claude Code, Claude chat, Projects and MCP.
+- **✦ Claude side panel** (open with "✦ Claude" or "✦ Send to Claude"): resizable by dragging, full screen,
+  closable while Claude keeps running.
+  - *Claude Code* tab: the `claude` CLI in an embedded terminal (xterm.js, POSIX pseudo-terminal) in the
+    project folder; "Send review" starts it with the review prompt or types it into the running session;
+    reconnects after a page reload. Options `--project`, `--claude-command`, `--no-terminal`.
+  - *Chat (API key)* tab: a chat with Claude through the Anthropic Messages API (Deep Chat component), with
+    your own key (`ANTHROPIC_API_KEY` or pasted, kept in memory only); the open notes and their
+    screenshots are sent along, with prompt caching. Options `--claude-model`, `--no-chat`.
+  - Only offered on localhost; every request needs a per-start token.
+- Vendored xterm.js 6.0.0, @xterm/addon-fit 0.11.0 and Deep Chat 2.5.1 (MIT), see `static/vendor/README.md`.
 
 ### Changed
-- "Copy prompt for Claude" is now "Copy prompt for Claude Code".
+- "Copy prompt for Claude" is now "Copy prompt for Claude Code" (both copy buttons stay).
+- The Content-Security-Policy allows inline styles (needed by xterm.js and Deep Chat); scripts are still
+  limited to the tool's own files.
+- The server stops cleanly (and stops Claude Code) on SIGTERM and SIGHUP, not only on Ctrl+C.
+
+### Fixed
+- A new mark is drawn as a solid box right away (it stayed dashed until the video moved).
 
 ## [0.1.0] - 2026-11-03
 

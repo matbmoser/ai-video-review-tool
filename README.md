@@ -23,6 +23,9 @@ video your browser can play.
   is linked to the line spoken at that moment, which is essential for audio changes.
 - **Made for AI agents**: writes `notes.json` (exact values), `REVIEW.md` (instructions an agent can act
   on) and `shots/<id>.jpg` (what you saw).
+- **Claude right next to the video**: **✦ Send to Claude** opens a resizable side panel with
+  **Claude Code running in a terminal** in your project, or a **chat with Claude through the API** with your
+  own key. The review goes along with one click, screenshots included.
 - **Works with every Claude**: a prompt for Claude Code, "Copy for Claude chat" for claude.ai and the
   apps, and an **MCP server** so the Claude desktop app can fetch reviews and screenshots by itself.
 - **Review rounds**: mark notes as done, then start a new round; earlier rounds are kept in `rounds/`.
@@ -94,10 +97,25 @@ review and changes the code.
 
 | You use … | Hand the review over with … |
 | --- | --- |
+| **Claude Code, inside the review page** | **✦ Send to Claude** → *Claude Code* tab: the real `claude` CLI runs in a terminal in the side panel, in your project folder (`--project`), and gets the review prompt. Watch it work and answer its questions without leaving the video. |
+| **the Claude API (your own key)** | **✦ Send to Claude** → *Chat (API key)* tab: a chat about the review; the open notes and their screenshots are sent along. Paste your key in the panel or set `ANTHROPIC_API_KEY`. |
 | **Claude Code** | **Copy prompt for Claude Code**: Claude reads the review folder itself. Install the included skill once and *"check my video review"* is enough: `cp -r integrations/claude/skills/apply-video-review .claude/skills/` |
 | **Claude desktop app** | the **MCP server**: add `video-review /path/to/renders --mcp` to the app's MCP config, then ask *"check my video review"*. Claude fetches the notes and screenshots and can tick notes as done. |
 | **claude.ai** or the **mobile app** | **Copy for Claude chat** (prompt + the whole review as text), paste it and attach the screenshots from `shots/`, or attach the **Download review (.zip)** file |
 | **a Claude Project** | upload `REVIEW.md` and the screenshots to the project's knowledge |
+
+![The ✦ Claude side panel next to the review, here with the API chat](docs/images/claude-drawer.png)
+
+The side panel opens with **✦ Claude** (top right) or **✦ Send to Claude** (below the notes). Drag its left
+edge to make it as wide as you like, use **⤢** for full screen and **✕** to close it; Claude Code keeps
+running while it is closed and the terminal reconnects after a page reload. Start the tool in the
+project that renders the video (or pass `--project`), so Claude Code can change the code:
+
+```bash
+cd my-remotion-project
+video-review out/ --open                 # Claude Code runs in my-remotion-project/
+ANTHROPIC_API_KEY=sk-ant-… video-review out/ --open   # optional: the API chat without pasting a key
+```
 
 Claude desktop app configuration (**Settings → Developer → Edit Config**), use full paths:
 
@@ -150,6 +168,11 @@ video-review [VIDEO | FOLDER] [options]      (default: the current folder)
   -p, --port N            port (default: 8765; 0 picks a free one)
       --open              open the review page in your browser
       --mcp               run as an MCP server for Claude (stdin/stdout) instead of the web page
+      --project DIR       folder Claude Code works in, in the ✦ Claude panel (default: the current folder)
+      --claude-command C  program started in the panel's terminal (default: claude)
+      --claude-model M    default model of the API chat (default: claude-sonnet-5-5)
+      --no-terminal       do not offer the embedded Claude Code terminal
+      --no-chat           do not offer the API chat
       --no-upload         do not allow uploading videos or transcripts from the page
       --max-upload-mb N   largest video that can be uploaded (default: 20480 MB)
       --export-markdown   regenerate REVIEW.md of VIDEO from notes.json and exit
@@ -173,7 +196,7 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
 | | |
 | --- | --- |
 | [docs/usage.md](docs/usage.md) | installing, running, reviewing, transcripts, troubleshooting |
-| [docs/claude.md](docs/claude.md) | how it integrates with Claude: Claude Code, Claude chat, Projects, MCP server, skill |
+| [docs/claude.md](docs/claude.md) | how it integrates with Claude: the ✦ Claude panel, Claude Code, Claude chat, Projects, MCP server, skill |
 | [docs/review-format.md](docs/review-format.md) | `notes.json` / `REVIEW.md` reference for agents and scripts |
 | [docs/architecture.md](docs/architecture.md) | how the tool is built, HTTP API, security model |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | development setup, tests, conventions |
@@ -185,7 +208,16 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
   websites cannot read or change your review or upload files. Uploads are only written into the folder
   you started the tool in, with sanitised file names; `--no-upload` turns them off. `--host 0.0.0.0` exposes it to your network, so only use
   that on networks you trust.
-- No telemetry, no accounts, no external requests: the page loads nothing from the internet.
+- No telemetry, no accounts: the page loads nothing from the internet (xterm.js and Deep Chat are bundled).
+  The only outgoing requests are the ones you start in the ✦ Claude panel: Claude Code talks to
+  Anthropic as it always does, and the API chat sends your messages, the open notes and their screenshots
+  to `api.anthropic.com`.
+- **Your API key stays yours**: it is read from `ANTHROPIC_API_KEY` or pasted into the panel, kept in the
+  memory of the local server only (never written to disk, never sent back to the page) and gone when the
+  tool stops. The repository contains no keys.
+- The ✦ Claude panel controls a terminal and your API key, so it is only offered on `localhost` and every
+  request needs a random per-start token that other websites cannot read. It is turned off with
+  `--host`; `--no-terminal` and `--no-chat` turn the parts off.
 - Your videos and review folders are ignored by this repository's `.gitignore`. Keep them out of
   public repos if they are confidential.
 

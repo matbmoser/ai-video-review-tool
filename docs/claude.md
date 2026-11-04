@@ -1,13 +1,15 @@
 # Using the review tool with Claude
 
-This tool does not call Claude or any other AI service itself. It produces a **review folder** (notes,
-screenshots, `REVIEW.md`) and offers it to Claude in the way that fits how you work. Your video and notes
-stay on your machine until you decide to share them.
+The tool produces a **review folder** (notes, screenshots, `REVIEW.md`) and offers it to Claude in the way
+that fits how you work. It contacts Claude only when you ask it to, from the **✦ Claude** side panel;
+otherwise your video and notes stay on your machine until you decide to share them.
 
 ## Which way fits you?
 
 | You use … | Best way | Claude can … |
 | --- | --- | --- |
+| **Claude Code**, without leaving the review | the [✦ Claude panel: Claude Code tab](#claude-panel-claude-code-in-the-review-page) | change your project while you watch, answer its questions next to the video |
+| **an Anthropic API key** | the [✦ Claude panel: Chat tab](#claude-panel-chat-with-your-api-key) | discuss the review with notes and screenshots, suggest changes per note |
 | **Claude Code** (terminal, IDE, desktop "Code") | [Claude Code reads the folder](#claude-code) (+ the skill), or the [MCP server](#mcp-server-claude-desktop-app-and-claude-code) | read everything, change the code, re-render |
 | **Claude desktop app** (chat) | the [MCP server](#mcp-server-claude-desktop-app-and-claude-code) | fetch notes and screenshots itself, tick notes as done |
 | **claude.ai in the browser**, or the **mobile app** | [copy for chat + attach screenshots](#claude-chat-claudeai-desktop-or-mobile-app) or the zip | read the review you paste and attach |
@@ -48,9 +50,50 @@ the transcript line to find the scene and the code that produces it.
    **same file name**, the notes are kept), tick **done** for every fixed note and add new notes. When a
    round is finished, click **New round**: the notes move to `rounds/001/`, … and the list starts empty.
 
+## ✦ Claude panel: Claude Code in the review page
+
+Click **✦ Send to Claude** below the notes (or **✦ Claude** at the top right, then **Send review**). A
+panel opens on the right with a terminal running the real **Claude Code** CLI (`claude`) in your project
+folder, started with the review prompt below. Everything Claude Code can do in your terminal works here:
+it reads `REVIEW.md` and the screenshots, edits the code, re-renders, and asks you before it runs commands.
+Type in the terminal to answer it. **Send review** again later (for example after you added notes) types the
+prompt into the running session.
+
+```bash
+cd my-remotion-project            # Claude Code works here …
+video-review out/ --open          # … unless you pass --project /path/to/project
+```
+
+- **Resize** the panel by dragging its left edge (the width is remembered), **⤢** makes it full screen,
+  **✕** closes it. Claude Code keeps running while the panel is closed, and the terminal reconnects with
+  the recent output after a page reload. **Stop** ends the session.
+- Requirements: [Claude Code](https://claude.com/claude-code) installed and signed in (`claude` on your
+  `PATH`), macOS or Linux (on Windows run the tool in WSL). Use `--claude-command` for another program or
+  extra flags, e.g. `--claude-command "claude --model opus"`.
+- It runs as you, with your permissions, like opening a terminal yourself. It is only offered when the
+  tool listens on `localhost`, and `--no-terminal` turns it off.
+
+## ✦ Claude panel: chat with your API key
+
+The **Chat (API key)** tab is a chat with Claude through the Anthropic API, built with the open-source
+[Deep Chat](https://deepchat.dev) component. It needs no Claude Code: bring your own
+[API key](https://console.anthropic.com/settings/keys) (usage is billed to your API account).
+
+1. Paste the key in the panel (or start the tool with `ANTHROPIC_API_KEY` set, then nothing needs to be
+   pasted). The key is kept in the memory of the local server only: it is never written to disk, never
+   sent back to the page, and is gone when the tool stops. **Forget** removes it earlier.
+2. Click **Send review**, or just ask a question. With **include review** on, the open notes of the
+   current video (as text, like `REVIEW.md`) and up to 20 screenshots are sent with the conversation, so
+   Claude sees the marks you drew. The review is sent with prompt caching, so follow-up questions are cheap.
+3. Pick the model in the panel; `--claude-model` sets the default (`claude-sonnet-5-5`).
+
+The chat can explain and plan, and write code you copy into your project; it cannot change your files.
+For that, use the Claude Code tab. `--no-chat` turns the chat off.
+
 ## Claude Code
 
-Claude Code works in your project folder and can read the review folder directly.
+Claude Code works in your project folder and can read the review folder directly. Instead of the panel
+you can use it in your own terminal or IDE:
 
 1. Click **Copy prompt for Claude Code** and paste it. It looks like this:
 
