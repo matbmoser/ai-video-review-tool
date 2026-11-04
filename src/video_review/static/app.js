@@ -156,7 +156,7 @@
       $("meta").textContent = [`${state.fps} fps`,
         state.transcript.length ? `${state.transcript.length} transcript lines (${config.transcriptFile})` : "no transcript"].join(" · ");
       $("folder").textContent = (backend.local
-        ? `Saved in this browser · “Download .zip” exports ${config.reviewFolder}/`
+        ? "Saved in this browser · Export → Download review for the folder"
         : `Saved to ${config.reviewFolder}/ (notes.json · REVIEW.md · shots/)`) +
         (config.rounds && config.rounds.length ? ` · ${config.rounds.length} earlier round(s)` : "");
       loadNotes(review);

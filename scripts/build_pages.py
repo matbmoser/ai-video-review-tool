@@ -56,11 +56,11 @@ INDEX_EDITS = [
      'Or start the tool with <code>ANTHROPIC_API_KEY</code> set.',
      'Kept only in the memory of this page (never saved: paste it again after a reload) and sent only to\n'
      '          api.anthropic.com, directly from your browser.'),
-    ('        <div class="credits small muted">',
-     '        <div class="small muted browser-note">Browser version: notes are saved in this browser, the video is '
-     'never uploaded. For Claude Code next to the video and the MCP server, '
-     f'<a href="{REPO_URL}#quick-start" target="_blank" rel="noopener noreferrer">install the tool</a>.</div>\n'
-     '        <div class="credits small muted">'),
+    ('      <footer class="page-foot">\n',
+     '      <footer class="page-foot">\n'
+     '        <div class="browser-note">Browser version: the video is never uploaded and your notes stay in this '
+     'browser. For Claude Code next to the video and the MCP server, '
+     f'<a href="{REPO_URL}#quick-start" target="_blank" rel="noopener noreferrer">install the tool</a>.</div>\n'),
 ]
 
 
