@@ -1,7 +1,10 @@
+import base64
 import http.client
 import io
 import json
+import sys
 import threading
+import time
 import zipfile
 from urllib.parse import quote
 
@@ -200,3 +203,125 @@ def test_uploads_can_be_disabled(tmp_path, video_file):
 ])
 def test_parse_range(header, size, expected):
     assert parse_range(header, size) == expected
+
+
+# ── Claude drawer ────────────────────────────────────────────────────────────────────────────
+from video_review import claude_api  # noqa: E402
+from video_review.claude_api import ClaudeChat  # noqa: E402
+from video_review.terminal import TerminalManager  # noqa: E402
+
+
+@pytest.fixture
+def claude_server(workspace, tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    script = tmp_path / "fake-claude"
+    script.write_text('#!/bin/sh\necho "started: $*"\nwhile read line; do echo "got: $line"; done\n')
+    script.chmod(0o755)
+    app = ReviewApp(workspace, terminal=TerminalManager(str(script), tmp_path), chat=ClaudeChat())
+    srv = create_server(app, "127.0.0.1", 0)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    yield srv, app
+    app.terminal.shutdown()
+    srv.shutdown()
+    srv.server_close()
+
+
+def test_claude_routes_need_the_token(claude_server):
+    srv, app = claude_server
+    info = get_json(srv, "/api/workspace")
+    assert info["token"] == app.token and "terminal" in info["claude"] and "chat" in info["claude"]
+    for path in ("/api/terminal/start", "/api/terminal/input", "/api/claude/key", "/api/claude/chat"):
+        res, _ = request(srv, "POST", path, {"data": "x"})
+        assert res.status == 403, path
+        res, _ = request(srv, "POST", path, {"data": "x"}, headers={"X-Review-Token": "wrong"})
+        assert res.status == 403, path
+    res, _ = request(srv, "GET", "/api/terminal/stream?offset=0")
+    assert res.status == 403
+    # a cross-origin page is refused even with the token
+    res, _ = request(srv, "POST", "/api/terminal/start", {}, headers={"X-Review-Token": app.token,
+                                                                      "Origin": "https://evil.example"})
+    assert res.status == 403
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX pseudo-terminal")
+def test_terminal_routes(claude_server):
+    srv, app = claude_server
+    auth = {"X-Review-Token": app.token}
+    res, body = request(srv, "POST", "/api/terminal/input", {"data": "x"}, headers=auth)
+    assert res.status == 409  # nothing running yet
+    res, body = request(srv, "POST", "/api/terminal/send", {"text": "fix my review", "cols": 90, "rows": 20},
+                        headers=auth)
+    assert res.status == 200 and json.loads(body)["running"] is True
+    res, _ = request(srv, "POST", "/api/terminal/input", {"data": "hello\r"}, headers=auth)
+    assert res.status == 200
+    res, _ = request(srv, "POST", "/api/terminal/resize", {"cols": 120, "rows": 30}, headers=auth)
+    assert res.status == 200
+
+    conn = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=10)
+    conn.request("GET", f"/api/terminal/stream?offset=0&token={app.token}",
+                 headers={"Host": f"127.0.0.1:{srv.server_address[1]}"})
+    stream = conn.getresponse()
+    assert stream.status == 200 and stream.getheader("Content-Type") == "text/event-stream"
+    output = b""
+    deadline = time.time() + 10
+    while b"got: hello" not in output and time.time() < deadline:
+        line = stream.fp.readline()
+        if line.startswith(b"data: "):
+            output += base64.b64decode(line[6:].strip())
+    assert b"started: fix my review" in output and b"got: hello" in output
+    res, body = request(srv, "POST", "/api/terminal/stop", {}, headers=auth)
+    assert json.loads(body)["running"] is False
+    # the stream ends with an exit event
+    rest = b""
+    while b"event: exit" not in rest and time.time() < deadline:
+        chunk = stream.fp.readline()
+        if not chunk:
+            break
+        rest += chunk
+    assert b"event: exit" in rest
+    conn.close()
+
+
+def test_chat_route_streams_from_the_api(claude_server, monkeypatch):
+    srv, app = claude_server
+    auth = {"X-Review-Token": app.token}
+    seen = {}
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    def fake_urlopen(req, timeout):
+        seen["body"] = json.loads(req.data)
+        return Response(b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Note 1: "}}\n'
+                        b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"done"}}\n')
+
+    monkeypatch.setattr(claude_api.urllib.request, "urlopen", fake_urlopen)
+    payload = {"messages": [{"role": "user", "text": "help"}], "video": "demo.mp4", "review": True}
+    res, body = request(srv, "POST", "/api/claude/chat", payload, headers=auth)
+    assert res.status == 200 and b"no API key" in body  # shown in the chat as {"error": ...}
+
+    res, body = request(srv, "POST", "/api/claude/key", {"key": "short"}, headers=auth)
+    assert res.status == 400
+    res, body = request(srv, "POST", "/api/claude/key", {"key": "sk-ant-api03-abcdefghijklmnop"}, headers=auth)
+    assert res.status == 200 and json.loads(body)["configured"] and b"sk-ant" not in body
+
+    res, body = request(srv, "POST", "/api/claude/chat", payload, headers=auth)
+    events = [json.loads(line[6:]) for line in body.decode().splitlines() if line.startswith("data: ")]
+    assert "".join(e["text"] for e in events) == "Note 1: done"
+    assert seen["body"]["messages"][0]["content"][0]["text"].startswith("Here is the review")
+
+    res, body = request(srv, "POST", "/api/claude/key", {"key": None}, headers=auth)
+    assert json.loads(body)["configured"] is False
+
+
+def test_claude_is_off_on_network_addresses(workspace):
+    app = ReviewApp(workspace, terminal=TerminalManager("sh", "."), chat=ClaudeChat())
+    app.restrict_to_loopback("0.0.0.0")
+    status = app.claude_status()
+    assert status["terminal"]["available"] is False and "localhost" in status["terminal"]["reason"]
+    assert status["chat"]["enabled"] is False and "localhost" in status["chat"]["reason"]

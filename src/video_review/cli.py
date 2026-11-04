@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 import threading
 import webbrowser
@@ -10,8 +11,10 @@ from pathlib import Path
 from urllib.parse import quote
 
 from . import __version__
+from .claude_api import DEFAULT_MODEL, ClaudeChat
 from .server import ReviewApp, create_server
 from .store import ReviewError, render_markdown
+from .terminal import TerminalManager
 from .transcript import TranscriptError, load_transcript
 from .workspace import DEFAULT_MAX_UPLOAD_BYTES, VIDEO_EXTENSIONS, Workspace
 
@@ -22,6 +25,7 @@ examples:
   video-review out/video.mp4 --open     review one video
   video-review out/video.mp4 --transcript voice/timeline.json --fps 30
   video-review renders/ --mcp           MCP server for Claude (desktop app, Claude Code)
+  video-review out/ --project .         ✦ Claude drawer: Claude Code runs in the current folder
 
 Each video gets a review folder next to it (<video>.review/ with notes.json, REVIEW.md and shots/).
 Point your AI agent at REVIEW.md to implement the changes.
@@ -51,6 +55,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-upload", action="store_true", help="do not allow uploading videos or transcripts")
     p.add_argument("--max-upload-mb", type=int, default=DEFAULT_MAX_UPLOAD_BYTES // 1024 ** 2,
                    help="largest video that can be uploaded, in MB (default: %(default)s)")
+    claude = p.add_argument_group("Claude drawer (✦ Claude in the page)")
+    claude.add_argument("--project", type=Path, default=Path("."),
+                        help="folder Claude Code works in, usually the project that renders the video "
+                             "(default: the current folder)")
+    claude.add_argument("--claude-command", default="claude",
+                        help="program started in the embedded terminal (default: %(default)s)")
+    claude.add_argument("--no-terminal", action="store_true", help="do not offer the embedded Claude Code terminal")
+    claude.add_argument("--claude-model", default=DEFAULT_MODEL,
+                        help="default model of the API chat (default: %(default)s)")
+    claude.add_argument("--no-chat", action="store_true",
+                        help="do not offer the API chat (uses your ANTHROPIC_API_KEY)")
     p.add_argument("--mcp", action="store_true",
                    help="run as an MCP server on stdin/stdout instead of the web page, so Claude can read the reviews")
     p.add_argument("--export-markdown", action="store_true",
@@ -115,7 +130,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {store.markdown_path}")
         return 0
 
-    app = ReviewApp(workspace, title=args.title)
+    project = args.project.expanduser()
+    if not args.no_terminal and not project.is_dir():
+        return _fail(f"--project folder not found: {project}")
+    terminal = TerminalManager(args.claude_command, project, enabled=not args.no_terminal)
+    chat = ClaudeChat(args.claude_model, enabled=not args.no_chat)
+    app = ReviewApp(workspace, title=args.title, terminal=terminal, chat=chat)
     try:
         server = create_server(app, args.host, args.port)
     except OSError as exc:
@@ -138,6 +158,14 @@ def main(argv: list[str] | None = None) -> int:
         if tpath:
             print(f"  transcript  {tpath} ({len(workspace.transcript(video.name))} lines)")
     print(f"  uploads     {'off' if args.no_upload else 'on (drop a video onto the page)'}")
+    term = terminal.status()
+    if term["available"]:
+        print(f"  claude code {term['command']} in {term['cwd']} (✦ Claude → Claude Code)")
+    elif not args.no_terminal:
+        print(f"  claude code not available: {term['reason']}")
+    if chat.enabled:
+        key = "from ANTHROPIC_API_KEY" if chat.status()["configured"] else "not set (paste it in the page)"
+        print(f"  claude chat {chat.model}, API key {key}")
     print(f"  open        {url}")
     if args.host in ("0.0.0.0", "::"):
         print("  warning     listening on all interfaces: anyone on your network can open, upload and edit")
@@ -145,11 +173,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.open:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    # stop cleanly (and stop Claude Code in the terminal) when the process is terminated, not only on Ctrl+C
+    for sig in ("SIGTERM", "SIGHUP"):
+        if hasattr(signal, sig):
+            signal.signal(getattr(signal, sig), lambda *_: sys.exit(0))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")
     finally:
+        terminal.shutdown()
         server.server_close()
     return 0
 

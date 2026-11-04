@@ -16,16 +16,27 @@ Routes (``<v>`` is the URL-encoded file name of a video in the workspace)
 ``GET  /api/videos/<v>/markdown``            ``REVIEW.md`` as text (for pasting into a chat)
 ``GET  /api/videos/<v>/export``              the review folder as a zip file
 
+Claude drawer (only on a loopback address; writes need the ``X-Review-Token`` from ``/api/workspace``)
+------------------------------------------------------------------------------------------------------
+``GET  /api/claude``                         status of the terminal and of the API chat
+``GET  /api/terminal/stream?offset=&token=`` terminal output as server-sent events (base64 chunks)
+``POST /api/terminal/start|input|resize|send|stop``   control the embedded Claude Code terminal
+``POST /api/claude/key``                     set (or forget) the Anthropic API key, kept in memory only
+``POST /api/claude/chat``                    chat about a review: ``{messages, video, model, review}``
+
 The server binds to ``127.0.0.1`` by default, rejects requests whose ``Host`` header is not the address
 it listens on (protection against DNS rebinding) and rejects cross-origin writes.
 """
 
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import mimetypes
 import os
 import re
+import secrets
 import socket
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -34,7 +45,9 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from . import __version__
+from .claude_api import ChatError, ClaudeChat
 from .store import KINDS, ReviewError, render_markdown
+from .terminal import TerminalError, TerminalManager
 from .workspace import TRANSCRIPT_EXTENSIONS, VIDEO_EXTENSIONS, Workspace, WorkspaceError
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -52,8 +65,9 @@ _SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
     "Content-Security-Policy": (
+        # inline *styles* are needed by xterm.js and Deep Chat (web component); scripts stay 'self' only
         "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; "
-        "style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'"
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'"
     ),
 }
 
@@ -61,9 +75,25 @@ _SECURITY_HEADERS = {
 class ReviewApp:
     """Everything the request handler needs: the workspace and UI settings."""
 
-    def __init__(self, workspace: Workspace, title: str | None = None) -> None:
+    def __init__(self, workspace: Workspace, title: str | None = None,
+                 terminal: TerminalManager | None = None, chat: ClaudeChat | None = None) -> None:
         self.workspace = workspace
         self.title = title
+        self.terminal = terminal or TerminalManager(enabled=False, disabled_reason="the terminal is turned off")
+        self.chat = chat or ClaudeChat(enabled=False)
+        # Required on every Claude drawer request. Other websites cannot read it (no CORS), so they cannot
+        # drive the terminal or spend the API key even if they guess the port.
+        self.token = secrets.token_urlsafe(24)
+
+    def restrict_to_loopback(self, host: str) -> None:
+        """Turn the terminal and the chat off when the page is reachable from other machines."""
+        if host.lower() not in _LOOPBACK_NAMES:
+            reason = "only available when the review listens on localhost (not with --host)"
+            self.terminal.enabled, self.terminal.disabled_reason = False, reason
+            self.chat.enabled, self.chat.disabled_reason = False, reason
+
+    def claude_status(self) -> dict[str, Any]:
+        return {"terminal": self.terminal.status(), "chat": self.chat.status()}
 
     def workspace_info(self) -> dict[str, Any]:
         ws = self.workspace
@@ -77,6 +107,8 @@ class ReviewApp:
             "videoExtensions": list(VIDEO_EXTENSIONS),
             "transcriptExtensions": list(TRANSCRIPT_EXTENSIONS),
             "videos": [ws.summary(p.name) for p in ws.videos()],
+            "token": self.token,
+            "claude": self.claude_status(),
         }
 
     def video_config(self, name: str) -> dict[str, Any]:
@@ -134,6 +166,13 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
                 return self._file(target, head) if target else self._not_found()
             if path == "/api/workspace":
                 return self._json(app.workspace_info(), head=head)
+            if path == "/api/claude":
+                return self._json(app.claude_status(), head=head)
+            if path == "/api/terminal/stream":
+                query = parse_qs(url.query)
+                if not self._token_ok(query.get("token", [""])[0]):
+                    return self._error(HTTPStatus.FORBIDDEN, "missing or wrong token")
+                return self._terminal_stream(query.get("offset", ["0"])[0])
             if path.startswith("/media/"):
                 video = ws.video_path(unquote(path[len("/media/"):]))
                 return self._file(video, head, ranges=True) if video else self._not_found()
@@ -166,6 +205,13 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
                 self._drain()
                 return self._error(HTTPStatus.FORBIDDEN, "cross-origin request refused")
             url = urlsplit(self.path)
+            if method == "POST" and url.path.startswith(("/api/terminal/", "/api/claude/")):
+                if not self._token_ok(self.headers.get("X-Review-Token", "")):
+                    self._drain()
+                    return self._error(HTTPStatus.FORBIDDEN, "missing or wrong X-Review-Token")
+                if url.path.startswith("/api/terminal/"):
+                    return self._terminal_action(url.path[len("/api/terminal/"):])
+                return self._claude_action(url.path[len("/api/claude/"):], parse_qs(url.query))
             parts = _video_route(url.path)
             if parts is None:
                 self._drain()
@@ -212,7 +258,146 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
                 return self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return self._json(ws.summary(saved), HTTPStatus.CREATED)
 
+        # ── Claude drawer: embedded terminal ─────────────────────────────────────────────────
+        def _terminal_action(self, action: str) -> None:
+            body = self._read_json()
+            if body is None:
+                return None
+            if not isinstance(body, dict):
+                return self._error(HTTPStatus.BAD_REQUEST, "expected a JSON object")
+            term = app.terminal
+            try:
+                if action == "start":
+                    term.start(body.get("cols", 100), body.get("rows", 30), _text(body.get("prompt")))
+                elif action == "send":  # start Claude Code with this message, or type it into the running one
+                    text = _text(body.get("text"))
+                    if not text:
+                        return self._error(HTTPStatus.BAD_REQUEST, "nothing to send")
+                    session = term.session
+                    if session is None or not session.running:
+                        term.start(body.get("cols", 100), body.get("rows", 30), text)
+                    else:
+                        session.paste(text)
+                elif action == "input":
+                    data = body.get("data")
+                    if not isinstance(data, str) or len(data) > 1_000_000:
+                        return self._error(HTTPStatus.BAD_REQUEST, "data must be a string")
+                    term.require().write(data.encode("utf-8"))
+                elif action == "resize":
+                    term.require().resize(body.get("cols", 100), body.get("rows", 30))
+                elif action == "stop":
+                    term.stop()
+                else:
+                    return self._not_found()
+            except TerminalError as exc:
+                return self._json({"error": str(exc), **term.status()}, HTTPStatus.CONFLICT)
+            return self._json(term.status())
+
+        def _terminal_stream(self, offset_text: str) -> None:
+            session = app.terminal.session
+            if session is None:
+                return self._error(HTTPStatus.CONFLICT, "no terminal is running")
+            try:
+                offset = max(0, int(offset_text))
+            except ValueError:
+                offset = 0
+            self.close_connection = True
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            try:
+                self.wfile.write(b"retry: 1000\n\n")
+                while True:
+                    data, offset, exited = session.read(offset, timeout=15)
+                    if data:
+                        chunk = base64.b64encode(data).decode("ascii")
+                        self.wfile.write(f"id: {offset}\ndata: {chunk}\n\n".encode("ascii"))
+                    elif not exited:
+                        self.wfile.write(b": keep-alive\n\n")
+                    if exited and not data:
+                        self.wfile.write(f"event: exit\ndata: {session.exit_code}\n\n".encode("ascii"))
+                        self.wfile.flush()
+                        return None
+                    self.wfile.flush()
+                    if app.terminal.session is not session:
+                        return None
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return None  # the page was closed or reconnects
+
+        # ── Claude drawer: chat through the Anthropic API ────────────────────────────────────
+        def _claude_action(self, action: str, query: dict[str, list[str]]) -> None:
+            body = self._read_json()
+            if body is None:
+                return None
+            if not isinstance(body, dict):
+                return self._error(HTTPStatus.BAD_REQUEST, "expected a JSON object")
+            chat = app.chat
+            if action == "key":
+                if not chat.enabled:
+                    return self._error(HTTPStatus.CONFLICT, chat.status()["reason"])
+                try:
+                    if body.get("key"):
+                        chat.set_key(str(body["key"]))
+                    else:
+                        chat.forget_key()
+                except ChatError as exc:
+                    return self._error(HTTPStatus.BAD_REQUEST, str(exc))
+                return self._json(chat.status())
+            if action != "chat":
+                return self._not_found()
+            if not chat.enabled:
+                return self._error(HTTPStatus.CONFLICT, chat.status()["reason"])
+            # options come from the body (added by the page) or the query string
+            def option(key: str, default: str = "") -> str:
+                value = body.get(key, query.get(key, [default])[0])
+                return str(value) if value is not None else default
+
+            name = option("video")
+            store = ws.store(name) if name and ws.video_path(name) else None
+            try:
+                with_review = option("review", "1").lower() in ("1", "true")
+                request = chat.build_request(body.get("messages"), store, with_review, option("model") or None)
+                answer = chat.stream(request)
+                first = next(answer, None)  # surface key / model errors as a normal error response
+            except (ChatError, ReviewError) as exc:
+                return self._sse_error(str(exc))
+            self.close_connection = True
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            try:
+                if first:
+                    self._sse({"text": first})
+                for text in answer:
+                    if text:
+                        self._sse({"text": text})
+            except ChatError as exc:
+                self._sse({"error": str(exc)})
+            except (BrokenPipeError, ConnectionResetError):
+                return None
+            return None
+
+        def _sse(self, data: dict[str, Any]) -> None:
+            self.wfile.write(f"data: {json.dumps(data, ensure_ascii=False)}\n\n".encode())
+            self.wfile.flush()
+
+        def _sse_error(self, message: str) -> None:
+            """Deep Chat shows ``{"error": ...}`` in the chat; send it as a one-event stream."""
+            body = f"data: {json.dumps({'error': message}, ensure_ascii=False)}\n\n".encode()
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
         # ── security checks ──────────────────────────────────────────────────────────────────
+        def _token_ok(self, token: str) -> bool:
+            return bool(token) and hmac.compare_digest(token.encode(), app.token.encode())
+
         def _host_ok(self) -> bool:
             if allowed_hosts is None:
                 return True
@@ -345,6 +530,10 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
     return Handler
 
 
+def _text(value: Any, limit: int = 200_000) -> str | None:
+    return value[:limit] if isinstance(value, str) and value.strip() else None
+
+
 def _video_route(path: str) -> tuple[str, list[str]] | None:
     """Split ``/api/videos/<name>/<rest...>`` into (name, rest). Segments are URL-decoded one by one."""
     prefix = "/api/videos/"
@@ -402,6 +591,7 @@ def allowed_hosts_for(host: str) -> set | None:
 
 def create_server(app: ReviewApp, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPServer:
     """Create (but do not start) the HTTP server. Use port 0 for a free port."""
+    app.restrict_to_loopback(host)
     server_cls = _ThreadingHTTPServerV6 if ":" in host else ThreadingHTTPServer
     server = server_cls((host, port), make_handler(app, allowed_hosts_for(host)))
     server.daemon_threads = True
