@@ -306,6 +306,7 @@
         .sort((a, b) => a.localeCompare(b));
       return {
         version: CFG.version || "", title: null, workspace: "this browser", fps: FPS, uploads: true, local: true,
+        githubMark: !!CFG.githubMark,
         maxUploadBytes: Number.MAX_SAFE_INTEGER, videoExtensions: VIDEO_EXT, transcriptExtensions: TRANSCRIPT_EXT,
         videos: names.map((n) => summary(n, byName.get(n))),
       };

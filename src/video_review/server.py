@@ -110,6 +110,7 @@ class ReviewApp:
             "transcriptExtensions": list(TRANSCRIPT_EXTENSIONS),
             "videos": [ws.summary(p.name) for p in ws.videos()],
             "token": self.token,
+            "githubMark": (STATIC_DIR / "github-mark.svg").is_file(),
             "claude": self.claude_status(),
         }
 

@@ -219,6 +219,11 @@ a.btn-link {
 a.btn-link:hover { border-color: #4a5462; background: #1f2630; }
 a.btn-link:hover svg.i { color: var(--text); }
 a.btn-link svg.i { color: var(--muted); }
+/* GitHub's own mark, if static/github-mark.svg exists (see static/README.md); otherwise a generic code icon */
+a.btn-link .gh-mark { display: none; width: 16px; height: 16px; flex: none; background: currentColor;
+  -webkit-mask: url("/static/github-mark.svg") center / contain no-repeat; mask: url("/static/github-mark.svg") center / contain no-repeat; }
+a.btn-link.has-mark .gh-mark { display: block; }
+a.btn-link.has-mark svg.fallback { display: none; }
 .topbar .claude-btn { height: 32px; border-radius: 8px; }
 .license { font-size: 11.5px; }
 .license a { color: var(--blue); }

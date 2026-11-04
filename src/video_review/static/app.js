@@ -113,6 +113,8 @@
     const ws = state.workspace;
     for (const id of ["uploadBtn", "transcriptBtn", "emptyUpload"]) $(id).hidden = !ws.uploads;
     if (backend.local) $("uploadBtn").textContent = "📂 Open video";
+    // GitHub's mark on the GitHub button, when static/github-mark.svg was added (see static/README.md)
+    $("githubLink").classList.toggle("has-mark", !!ws.githubMark);
     renderVideoSelect();
     return ws;
   }
