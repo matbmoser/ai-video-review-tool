@@ -92,8 +92,11 @@ The **Chat (API key)** tab is a chat with Claude through the Anthropic API, buil
 
 What to expect from the chat:
 
-- **One conversation per video**, kept in your browser, so it is still there after a reload or a restart of
-  the tool. **＋ New chat** deletes it and starts over.
+- **Your conversations are kept** in your browser, so they are still there after a reload or a restart of
+  the tool. **＋ New chat** starts another one; **Chats** lists them all (this video first, then the other
+  videos), with search, ✎ rename and 🗑 delete. Opening a chat of another video switches to that video.
+- **No key, no typing**: until a key is set, the input is locked and points you to **Add API key**.
+- While Claude answers, a coloured border runs around the input; ■ stops the answer.
 - Answers stream in, with Markdown, tables and **syntax-coloured code**. Every code block has a **Copy**
   button and every answer a **Copy answer** button. The ■ button stops an answer.
 - **It recovers by itself**: if the API is overloaded or rate-limited, or the network hiccups, the tool
@@ -110,7 +113,7 @@ For that, use the Claude Code tab. `--no-chat` turns the chat off.
 Claude Code works in your project folder and can read the review folder directly. Instead of the panel
 you can use it in your own terminal or IDE:
 
-1. Click **Copy prompt for Claude Code** and paste it. It looks like this:
+1. Click **Export → Copy for Claude Code** and paste it. It looks like this:
 
    ```text
    Please implement my video review of video.mp4 in video.review/ (full path: /…/out/video.review).
@@ -187,13 +190,13 @@ Useful when the renders live outside the project, or to let Claude tick notes as
 
 A regular chat cannot see the files on your computer, so you give it the review:
 
-1. Click **Copy for Claude chat**. This copies a short prompt **plus the whole review as text** (every note
+1. Click **Export → Copy for Claude chat**. This copies a short prompt **plus the whole review as text** (every note
    with timecode, frame, position, spoken line and requested change).
 2. Paste it into the chat.
 3. Attach the screenshots: drag the images from `<video>.review/shots/` into the message (the status line
    tells you how many). Their names are the note numbers, so Claude can match them.
 
-Alternatively attach the **⬇ Download review (.zip)** file (notes, `REVIEW.md`, screenshots and transcript
+Alternatively attach the **Export → Download review (.zip)** file (notes, `REVIEW.md`, screenshots and transcript
 in one file) together with the prompt; Claude unpacks it when the chat can run code (file analysis
 enabled). If it cannot, attach `REVIEW.md` and the screenshots instead.
 
@@ -204,7 +207,7 @@ through a GitHub connector), ask it to make the changes there.
 
 When you work on one video over many rounds, create a **Project** for it in Claude and put the current
 round into the project's knowledge: upload `REVIEW.md` and the screenshots from `shots/` (or paste the text
-from **Copy for Claude chat**). Every chat in the project can then refer to *"the review"*. Replace the
+from **Export → Copy for Claude chat**). Every chat in the project can then refer to *"the review"*. Replace the
 files after each round (**New round** keeps the old ones in `rounds/` on your machine).
 
 ## `CLAUDE.md` snippet

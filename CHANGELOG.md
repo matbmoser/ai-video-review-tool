@@ -36,15 +36,26 @@ All notable changes to this project are documented here. The format follows
   the review downloads as the same zip, and the chat calls the API directly with your key. Built by
   `scripts/build_pages.py` and deployed by `.github/workflows/pages.yml`.
 
+- Chat: several conversations per video, listed under **Chats** with search, rename and delete; the
+  input is locked until an API key is set; a coloured border runs around the input while Claude answers.
+- Delete a video (🗑 next to the video menu), optionally with its review folder and transcript
+  (`DELETE /api/videos/<v>`).
+- An **Export** menu with "Copy for Claude Code", "Copy for Claude chat" and "Download review (.zip)"; a
+  GitHub link in the top bar; the MIT license notice in the page.
+
+### Fixed
+- The browser version's chat no longer spins forever when it fails before the first word (e.g. no key).
+- Full screen chat fits the window (no cut-off edge, no horizontal scrollbar).
+- Long video names wrap instead of overflowing the notes panel.
+- A new mark is drawn as a solid box right away (it stayed dashed until the video moved).
+
 ### Changed
+- Buttons of the notes panel and the Claude panel share one size and style, so nothing jumps or wraps.
 - The page talks to its storage through one backend object (the server, or the browser in the Pages version).
-- "Copy prompt for Claude" is now "Copy prompt for Claude Code" (both copy buttons stay).
+- The copy buttons and the zip download are in the Export menu ("Copy for Claude Code", "Copy for Claude chat").
 - The Content-Security-Policy allows inline styles (needed by xterm.js and Deep Chat); scripts are still
   limited to the tool's own files.
 - The server stops cleanly (and stops Claude Code) on SIGTERM and SIGHUP, not only on Ctrl+C.
-
-### Fixed
-- A new mark is drawn as a solid box right away (it stayed dashed until the video moved).
 
 ## [0.1.0] - 2026-11-03
 

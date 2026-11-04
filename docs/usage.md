@@ -8,9 +8,9 @@
   plays the file directly.
 - Notes, screenshots, transcripts and rounds are saved in the browser (IndexedDB), per video file name.
   After a reload the notes are still there; open the same video file again to continue.
-- **⬇ Download review (.zip)** gives you the same `<video>.review/` folder the installed tool writes
+- **Export → Download review (.zip)** gives you the same `<video>.review/` folder the installed tool writes
   (`notes.json`, `REVIEW.md`, `shots/`, `rounds/`). Unzip it next to your project and **Copy prompt for
-  Claude Code** tells Claude Code where to find it. **Copy for Claude chat** works as in the installed tool.
+  Claude Code** tells Claude Code where to find it. **Export → Copy for Claude chat** works as in the installed tool.
 - Add `?fps=25` to the address for renders that are not 30 fps.
 - The ✦ Claude panel has the chat with your own API key (sent from your browser to `api.anthropic.com`,
   kept in memory only). Claude Code in the panel and the MCP server need the installed tool.
@@ -91,12 +91,16 @@ pin or box again (the text stays; time, frame, transcript line and screenshot ar
 a note. Tick **done** when a change is implemented; untick **show done** to hide finished notes. Pins and
 boxes work with a mouse, a pen or a finger.
 
+**🗑** next to the video menu deletes the current video (in the browser version: removes it from the page).
+Tick **Also delete its notes and screenshots** to remove its review folder and transcript too; otherwise
+the notes stay and come back when you add the video again. Deleting is off with `--no-upload`.
+
 **New round** moves the current notes, `REVIEW.md` and screenshots to `rounds/<n>/` and starts an empty
 list. Use it after the agent has implemented a round, so the next round only contains new feedback.
 
-**Copy prompt for Claude Code** copies a short prompt that tells Claude Code (or another agent that can
-read your files) where the review is and how to apply it. **Copy for Claude chat** copies the prompt plus the
-whole review as text, for claude.ai and the desktop or mobile app; attach the screenshots from `shots/`. **⬇ Download review (.zip)** downloads the review folder (current round, earlier
+**Export → Copy for Claude Code** copies a short prompt that tells Claude Code (or another agent that can
+read your files) where the review is and how to apply it. **Export → Copy for Claude chat** copies the prompt plus the
+whole review as text, for claude.ai and the desktop or mobile app; attach the screenshots from `shots/`. **Export → Download review (.zip)** downloads the review folder (current round, earlier
 rounds and the transcript), for example to attach it to Claude on claude.ai or to send it to a teammate.
 See [claude.md](claude.md).
 

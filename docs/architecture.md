@@ -59,6 +59,7 @@ tag: scripts only from the site, connections only to the site and `api.anthropic
 | GET | `/static/<file>` | UI assets |
 | GET | `/api/workspace` | `{version, workspace, fps, uploads, maxUploadBytes, videos: [{name, size, notes, open, transcript}]}` |
 | PUT | `/api/videos/<v>` | upload a video (raw body); `201` with its summary |
+| DELETE | `/api/videos/<v>?review=1` | delete a video; with `review=1` also `<stem>.review/` and the transcript next to it (never pinned folders or files) |
 | GET | `/media/<v>` | the video (supports `Range`) |
 | GET | `/api/videos/<v>/config` | `{name, url, fps, kinds, transcript, transcriptFile, reviewFolder, reviewPath, rounds}` |
 | PUT | `/api/videos/<v>/transcript?filename=…` | upload a transcript (`.json`, `.srt`, `.vtt`) |
