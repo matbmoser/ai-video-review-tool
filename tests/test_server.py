@@ -95,6 +95,9 @@ def test_save_load_shot_and_export(server, note_factory):
     assert res.status == 200 and body.startswith(b"\x89PNG")
     res, body = request(server, "GET", "/api/videos/demo.mp4/export")
     assert res.status == 200 and res.getheader("Content-Type") == "application/zip"
+    res, body = request(server, "GET", "/api/videos/demo.mp4/markdown")
+    assert res.status == 200 and b"Make the title bigger" in body and "markdown" in res.getheader("Content-Type")
+    res, body = request(server, "GET", "/api/videos/demo.mp4/export")
     names = zipfile.ZipFile(io.BytesIO(body)).namelist()
     assert {"demo.review/notes.json", "demo.review/REVIEW.md", "demo.review/shots/1.png",
             "demo.review/transcript.json"} <= set(names)

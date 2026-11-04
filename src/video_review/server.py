@@ -13,6 +13,7 @@ Routes (``<v>`` is the URL-encoded file name of a video in the workspace)
 ``POST /api/videos/<v>/review``              save notes + screenshots, regenerate ``REVIEW.md``
 ``POST /api/videos/<v>/review/archive``      move the current round to ``rounds/<n>/``
 ``GET  /api/videos/<v>/shots/<id>.<ext>``    a saved screenshot
+``GET  /api/videos/<v>/markdown``            ``REVIEW.md`` as text (for pasting into a chat)
 ``GET  /api/videos/<v>/export``              the review folder as a zip file
 
 The server binds to ``127.0.0.1`` by default, rejects requests whose ``Host`` header is not the address
@@ -33,7 +34,7 @@ from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from . import __version__
-from .store import KINDS, ReviewError
+from .store import KINDS, ReviewError, render_markdown
 from .workspace import TRANSCRIPT_EXTENSIONS, VIDEO_EXTENSIONS, Workspace, WorkspaceError
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -150,6 +151,9 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
                 if len(rest) == 2 and rest[0] == "shots":
                     shot = ws.store(name).shot_file(f"shots/{rest[1]}")
                     return self._file(shot, head) if shot else self._not_found()
+                if rest == ["markdown"]:
+                    return self._bytes(render_markdown(ws.store(name).load()).encode("utf-8"),
+                                       "text/markdown; charset=utf-8", head)
                 if rest == ["export"]:
                     return self._bytes(ws.export_zip(name), "application/zip", head,
                                        filename=ws.store(name).folder.name + ".zip")

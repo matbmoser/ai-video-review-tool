@@ -147,7 +147,7 @@
     $("emptyStage").hidden = !empty;
     $("hint").hidden = empty;
     stage.classList.toggle("is-empty", empty);
-    for (const id of ["transcriptBtn", "save", "copyPrompt", "exportZip", "newRound", "play", "back", "fwd"]) {
+    for (const id of ["transcriptBtn", "save", "copyPrompt", "copyChat", "exportZip", "newRound", "play", "back", "fwd"]) {
       $(id).disabled = empty;
     }
     if (empty) {
@@ -620,6 +620,38 @@
       setStatus("Prompt copied. Paste it into Claude.", "ok");
     } catch (_) {
       window.prompt("Copy this prompt:", prompt);
+    }
+  };
+
+  /** prompt + REVIEW.md as text, for a Claude chat that cannot read the review folder itself */
+  $("copyChat").onclick = async () => {
+    if (state.dirty) await save();
+    const open = state.notes.filter((n) => n.status !== "done").length;
+    const withShots = state.notes.filter((n) => n.status !== "done" && n.shot).length;
+    let markdown = "";
+    try {
+      const res = await fetch(videoApi("/markdown"));
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      markdown = await res.text();
+    } catch (err) {
+      setStatus(`Could not load the review text: ${err.message}`, "error");
+      return;
+    }
+    const text = [
+      `Please help me implement this review of my video ${state.name} (${state.fps} fps).`,
+      `It has ${open} open note(s). Each note is one change at an exact frame; I attached the screenshots`,
+      `(shots/<note number>.jpg) where a red pin or box shows the spot. Tell me per note number what to change`,
+      "in the project that renders the video (or change it, if you have access), and ask if a note is unclear.",
+      "",
+      markdown,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus(withShots
+        ? `Copied. Paste it into the chat and attach the ${withShots} screenshot(s) from ${state.config.reviewFolder}/shots/ (or the zip).`
+        : "Copied. Paste it into the chat.", "ok");
+    } catch (_) {
+      window.prompt("Copy this text:", text);
     }
   };
 
