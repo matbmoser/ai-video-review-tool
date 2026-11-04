@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import shutil
 import tempfile
 import threading
 import zipfile
@@ -164,6 +165,34 @@ class Workspace:
         _atomic_write(target, data)
         self._transcripts.pop(name, None)  # an uploaded transcript replaces a pinned one
         return segments
+
+    # ── deleting ─────────────────────────────────────────────────────────────────────────────
+    def delete_video(self, name: str, with_review: bool = False) -> dict[str, Any]:
+        """Delete video ``name`` from the workspace; with ``with_review`` also its review folder and transcript.
+
+        Only files the workspace manages are removed: the video itself, the review folder next to it
+        (``<stem>.review/``, not one pinned with ``--review-dir``) and a transcript next to it (not one
+        pinned with ``--transcript``). Deleting needs uploads to be allowed.
+        """
+        if not self.uploads:
+            raise WorkspaceError("deleting videos is turned off for this review (--no-upload)")
+        path = self.require(name)
+        removed = [path.name]
+        with self._lock:
+            path.unlink()
+            self._stores.pop(name, None)
+            self._transcript_cache.pop(name, None)
+        if with_review:
+            folder = self.root / (Path(name).stem + ".review")
+            if name not in self._review_dirs and folder.is_dir() and not folder.is_symlink():
+                shutil.rmtree(folder)
+                removed.append(folder.name + "/")
+            if name not in self._transcripts:
+                transcript = self.transcript_path(name)
+                if transcript is not None and transcript.parent == self.root:
+                    transcript.unlink()
+                    removed.append(transcript.name)
+        return {"deleted": name, "removed": removed, "review": with_review}
 
     # ── uploads ──────────────────────────────────────────────────────────────────────────────
     def receive_video(self, filename: str, stream: BinaryIO, length: int) -> str:

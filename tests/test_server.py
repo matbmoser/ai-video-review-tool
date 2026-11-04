@@ -326,3 +326,33 @@ def test_claude_is_off_on_network_addresses(workspace):
     status = app.claude_status()
     assert status["terminal"]["available"] is False and "localhost" in status["terminal"]["reason"]
     assert status["chat"]["enabled"] is False and "localhost" in status["chat"]["reason"]
+
+
+def test_delete_video(server, workspace, video_file, note_factory):
+    root = workspace.root
+    workspace.store("demo.mp4").save({"notes": [note_factory(1)]})
+    (root / "other.mp4").write_bytes(b"x" * 10)
+    host = {"Origin": "https://evil.example"}
+    res, _ = request(server, "DELETE", "/api/videos/demo.mp4", headers=host)
+    assert res.status == 403 and video_file.exists()  # cross-origin
+    res, _ = request(server, "DELETE", "/api/videos/missing.mp4")
+    assert res.status == 404
+    res, body = request(server, "DELETE", "/api/videos/other.mp4")
+    assert res.status == 200 and json.loads(body)["removed"] == ["other.mp4"] and not (root / "other.mp4").exists()
+    res, body = request(server, "DELETE", "/api/videos/demo.mp4?review=1")
+    removed = json.loads(body)["removed"]
+    assert res.status == 200 and removed == ["demo.mp4", "demo.review/", "demo.transcript.json"]
+    assert not video_file.exists() and not (root / "demo.review").exists()
+    assert [v["name"] for v in get_json(server, "/api/workspace")["videos"]] == []
+
+
+def test_delete_keeps_the_review_by_default_and_needs_uploads(workspace, video_file, note_factory):
+    from video_review.workspace import WorkspaceError
+
+    workspace.store("demo.mp4").save({"notes": [note_factory(1)]})
+    workspace.uploads = False
+    with pytest.raises(WorkspaceError):
+        workspace.delete_video("demo.mp4")
+    workspace.uploads = True
+    workspace.delete_video("demo.mp4")
+    assert not video_file.exists() and (workspace.root / "demo.review" / "notes.json").exists()

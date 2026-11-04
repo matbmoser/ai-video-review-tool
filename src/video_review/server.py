@@ -6,6 +6,7 @@ Routes (``<v>`` is the URL-encoded file name of a video in the workspace)
 ``GET  /static/<file>``                      UI assets
 ``GET  /api/workspace``                      workspace info and the list of videos
 ``PUT  /api/videos/<v>``                     upload a video (raw request body)
+``DELETE /api/videos/<v>?review=1``          delete a video (and its review folder and transcript)
 ``GET  /media/<v>``                          a video, with HTTP range support for seeking
 ``GET  /api/videos/<v>/config``              fps, transcript and review folder of a video
 ``PUT  /api/videos/<v>/transcript``          upload a transcript (``?filename=voice.srt``)
@@ -153,6 +154,9 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
         def do_PUT(self) -> None:  # noqa: N802
             self._write("PUT")
 
+        def do_DELETE(self) -> None:  # noqa: N802
+            self._write("DELETE")
+
         def _read(self, head: bool) -> None:
             if not self._host_ok():
                 return self._error(HTTPStatus.FORBIDDEN, "unexpected Host header")
@@ -221,6 +225,12 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
             try:
                 if method == "PUT" and rest == []:
                     return self._upload_video(name)
+                if method == "DELETE" and rest == []:
+                    self._drain()
+                    if ws.video_path(name) is None:
+                        return self._not_found()
+                    with_review = parse_qs(url.query).get("review", ["0"])[0] in ("1", "true")
+                    return self._json(ws.delete_video(name, with_review))
                 if ws.video_path(name) is None:
                     self._drain()
                     return self._not_found()
