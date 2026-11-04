@@ -22,7 +22,9 @@ video your browser can play.
 - **Knows what is being said**: load the voice-over or subtitles (`.json`, `.srt`, `.vtt`) and each note
   is linked to the line spoken at that moment, which is essential for audio changes.
 - **Made for AI agents**: writes `notes.json` (exact values), `REVIEW.md` (instructions an agent can act
-  on) and `shots/<id>.jpg` (what you saw). One click copies a ready-made prompt for Claude.
+  on) and `shots/<id>.jpg` (what you saw).
+- **Works with every Claude**: a prompt for Claude Code, "Copy for Claude chat" for claude.ai and the
+  apps, and an **MCP server** so the Claude desktop app can fetch reviews and screenshots by itself.
 - **Review rounds**: mark notes as done, then start a new round; earlier rounds are kept in `rounds/`.
 - **Re-mark and share**: move a note's pin or box without retyping it, and download the whole review as a
   `.zip` to attach it to Claude on claude.ai or send it to a teammate.
@@ -79,28 +81,39 @@ review and changes the code.
                      out/video.review/REVIEW.md · notes.json · shots/           │
                                        │                                        │
                                        ▼                                        │
-       "Copy prompt for Claude" ──▶ Claude reads the review and implements it ──┘
+   Claude Code · Claude chat · MCP ──▶ Claude reads the review and implements ──┘
 ```
 
 1. **Render** a preview of your video (Claude can do this for you).
 2. **Review**: run `video-review <video> --transcript <voice-over>` (or drop the video onto the page) and
    leave your notes.
-3. **Hand over**: click **Copy prompt for Claude** and paste it into Claude Code (or any agent that can
-   read files). The prompt points Claude at `REVIEW.md`, `notes.json` and the screenshots. Using Claude in
-   the browser? Click **Download review (.zip)** and attach the zip together with the prompt.
+3. **Hand over** the review to Claude, in the way that fits how you use it (below).
 4. **Check**: Claude answers per note number. Re-render (or upload the new render under the same name),
    reload the review page, tick **done** for every note that is fixed and add new notes where needed.
 5. **Next round**: when a round is finished, click **New round**. The old notes move to `rounds/001/`, …
 
-For the best results, install the included **Claude Code skill**. It teaches Claude how to read a review
-folder, how to map marks to your code and how to report back:
+| You use … | Hand the review over with … |
+| --- | --- |
+| **Claude Code** | **Copy prompt for Claude Code**: Claude reads the review folder itself. Install the included skill once and *"check my video review"* is enough: `cp -r integrations/claude/skills/apply-video-review .claude/skills/` |
+| **Claude desktop app** | the **MCP server**: add `video-review /path/to/renders --mcp` to the app's MCP config, then ask *"check my video review"*. Claude fetches the notes and screenshots and can tick notes as done. |
+| **claude.ai** or the **mobile app** | **Copy for Claude chat** (prompt + the whole review as text), paste it and attach the screenshots from `shots/`, or attach the **Download review (.zip)** file |
+| **a Claude Project** | upload `REVIEW.md` and the screenshots to the project's knowledge |
 
-```bash
-mkdir -p .claude/skills && cp -r integrations/claude/skills/apply-video-review .claude/skills/
+Claude desktop app configuration (**Settings → Developer → Edit Config**), use full paths:
+
+```json
+{
+  "mcpServers": {
+    "video-review": {
+      "command": "/full/path/to/video-review",
+      "args": ["/full/path/to/your/renders", "--mcp", "--fps", "30"]
+    }
+  }
+}
 ```
 
-See **[docs/claude.md](docs/claude.md)** for the full workflow, the prompt, a `CLAUDE.md` snippet and
-tips for Remotion projects.
+See **[docs/claude.md](docs/claude.md)** for step-by-step instructions for each option, the prompts, a
+`CLAUDE.md` snippet and tips for Remotion projects.
 
 ## What gets saved
 
@@ -136,6 +149,7 @@ video-review [VIDEO | FOLDER] [options]      (default: the current folder)
       --host ADDR         address to listen on (default: 127.0.0.1)
   -p, --port N            port (default: 8765; 0 picks a free one)
       --open              open the review page in your browser
+      --mcp               run as an MCP server for Claude (stdin/stdout) instead of the web page
       --no-upload         do not allow uploading videos or transcripts from the page
       --max-upload-mb N   largest video that can be uploaded (default: 20480 MB)
       --export-markdown   regenerate REVIEW.md of VIDEO from notes.json and exit
@@ -159,7 +173,7 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
 | | |
 | --- | --- |
 | [docs/usage.md](docs/usage.md) | installing, running, reviewing, transcripts, troubleshooting |
-| [docs/claude.md](docs/claude.md) | how it integrates with Claude: workflow, prompt, skill, `CLAUDE.md` snippet |
+| [docs/claude.md](docs/claude.md) | how it integrates with Claude: Claude Code, Claude chat, Projects, MCP server, skill |
 | [docs/review-format.md](docs/review-format.md) | `notes.json` / `REVIEW.md` reference for agents and scripts |
 | [docs/architecture.md](docs/architecture.md) | how the tool is built, HTTP API, security model |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | development setup, tests, conventions |

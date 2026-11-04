@@ -77,8 +77,9 @@ boxes work with a mouse, a pen or a finger.
 **New round** moves the current notes, `REVIEW.md` and screenshots to `rounds/<n>/` and starts an empty
 list. Use it after the agent has implemented a round, so the next round only contains new feedback.
 
-**Copy prompt for Claude** copies a short prompt that tells Claude (or another agent) where the review is
-and how to apply it. **⬇ Download review (.zip)** downloads the review folder (current round, earlier
+**Copy prompt for Claude Code** copies a short prompt that tells Claude Code (or another agent that can
+read your files) where the review is and how to apply it. **Copy for Claude chat** copies the prompt plus the
+whole review as text, for claude.ai and the desktop or mobile app; attach the screenshots from `shots/`. **⬇ Download review (.zip)** downloads the review folder (current round, earlier
 rounds and the transcript), for example to attach it to Claude on claude.ai or to send it to a teammate.
 See [claude.md](claude.md).
 

@@ -8,6 +8,7 @@ src/video_review/
 ├── cli.py          argument parsing, start-up, --export-markdown
 ├── server.py       HTTP routes, range requests, security checks
 ├── workspace.py    the folder of videos: listing, uploads, transcripts, zip export
+├── mcp.py          MCP server (JSON-RPC over stdio) for Claude: list / get reviews, set note status
 ├── store.py        validation, notes.json / REVIEW.md / shots, review rounds (one store per video)
 ├── transcript.py   JSON / SRT / WebVTT parsing
 └── static/         index.html, app.css, app.js (the review UI), favicon, images
@@ -46,7 +47,17 @@ src/video_review/
 | POST | `/api/videos/<v>/review` | save `{notes: [...]}`; returns the saved document, or `400 {error}` |
 | POST | `/api/videos/<v>/review/archive` | start a new round; returns `{archived, rounds}` |
 | GET | `/api/videos/<v>/shots/<id>.<ext>` | a saved screenshot |
+| GET | `/api/videos/<v>/markdown` | `REVIEW.md` as text |
 | GET | `/api/videos/<v>/export` | the review folder (and transcript) as a zip |
+
+## MCP server
+
+`video-review FOLDER --mcp` speaks the [Model Context Protocol](https://modelcontextprotocol.io) over
+stdin/stdout (newline-delimited JSON-RPC 2.0, protocol versions 2024-11-05 to 2025-06-18) instead of
+starting the web server. It implements `initialize`, `ping`, `tools/list` and `tools/call` with three tools:
+`list_video_reviews`, `get_video_review` (text plus one image content block per screenshot, up to
+`max_images`) and `set_note_status`. It uses the same `Workspace` and `ReviewStore` as the web page, logs
+only to stderr, and its only write is the status of a note.
 
 ## Security model
 

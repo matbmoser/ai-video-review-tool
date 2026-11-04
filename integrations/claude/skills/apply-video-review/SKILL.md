@@ -11,6 +11,8 @@ project that produced the video, then report back per note.
 
 ## 1. Find the review
 
+- If the `video-review` MCP tools are available (`list_video_reviews`, `get_video_review`), use them: they
+  return the open notes and the screenshots. Otherwise read the files:
 - The review folder is usually next to the video: `out/video.mp4` → `out/video.review/`. If the user
   did not name it, look for `*.review/notes.json` in the project (ignore `rounds/`, those are old rounds).
 - Read `REVIEW.md` for the overview and `notes.json` for exact values.
@@ -52,4 +54,5 @@ project that produced the video, then report back per note.
 - Say which notes need a decision from the user.
 - Re-render a preview (or tell the user how) and give the command to review it again, e.g.
   `video-review out/video.mp4 --transcript <voice-over> --fps <fps>`.
-- Remind the user to tick **done** on fixed notes, and to use **New round** when the round is complete.
+- Remind the user to tick **done** on fixed notes (or, with the MCP tools and after the user confirms a fix,
+  call `set_note_status`), and to use **New round** when the round is complete.
