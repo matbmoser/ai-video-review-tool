@@ -39,7 +39,7 @@ version = { attr = "video_review.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-video_review = ["static/*"]
+video_review = ["static/*", "static/vendor/*", "static/vendor/*/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
