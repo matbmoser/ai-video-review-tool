@@ -102,6 +102,7 @@
       const a = el("a", {href: `/api/videos/${enc(name)}/export`, download: filename});
       document.body.append(a); a.click(); a.remove();
     },
+    deleteVideo: (name, withReview) => api(`/api/videos/${enc(name)}?review=${withReview ? 1 : 0}`, {method: "DELETE"}),
     shotUrl: (name, shot, stamp) => `/api/videos/${enc(name)}/shots/${enc(shot.replace(/^shots\//, ""))}?v=${stamp}`,
   };
   const backend = window.VideoReviewBrowserBackend || serverBackend;
@@ -155,7 +156,7 @@
       $("meta").textContent = [`${state.fps} fps`,
         state.transcript.length ? `${state.transcript.length} transcript lines (${config.transcriptFile})` : "no transcript"].join(" · ");
       $("folder").textContent = (backend.local
-        ? `Saved in this browser · ⬇ Download review gives you ${config.reviewFolder}/ as a zip`
+        ? `Saved in this browser · “Download .zip” exports ${config.reviewFolder}/`
         : `Saved to ${config.reviewFolder}/ (notes.json · REVIEW.md · shots/)`) +
         (config.rounds && config.rounds.length ? ` · ${config.rounds.length} earlier round(s)` : "");
       loadNotes(review);
@@ -182,7 +183,8 @@
     stage.classList.toggle("is-empty", empty);
     $("emptyTitle").textContent = missing ? `Open ${missing} again` : "Drop a video here";
     for (const id of ["play", "back", "fwd"]) $(id).disabled = empty;
-    for (const id of ["transcriptBtn", "save", "sendClaude", "copyPrompt", "copyChat", "exportZip", "newRound"]) {
+    $("deleteVideo").disabled = !state.name;
+    for (const id of ["transcriptBtn", "save", "sendClaude", "exportBtn", "copyPrompt", "copyChat", "exportZip", "newRound"]) {
       $(id).disabled = empty && !missing;  // the notes of a video that has to be re-opened stay usable
     }
     if (missing) return;
@@ -361,7 +363,7 @@
       if (e.key === "Escape") e.target.blur();
       return;
     }
-    if (e.metaKey || e.ctrlKey || e.altKey || $("coffeeDialog").open || !state.name) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || $("coffeeDialog").open || $("deleteDialog").open || !state.name) return;
     if (e.code === "Space") { e.preventDefault(); $("play").click(); }
     else if (e.key === "ArrowLeft") { e.preventDefault(); step(e.shiftKey ? -1 : -1 / state.fps); }
     else if (e.key === "ArrowRight") { e.preventDefault(); step(e.shiftKey ? 1 : 1 / state.fps); }
@@ -702,6 +704,57 @@
     }
   };
 
+  // ── Export menu ──────────────────────────────────────────────────────────────────────────
+  const exportMenu = $("exportMenu");
+  function toggleExport(open = exportMenu.hidden) {
+    exportMenu.hidden = !open;
+    $("exportBtn").setAttribute("aria-expanded", String(open));
+    if (open) exportMenu.querySelector("button:not(:disabled)").focus();
+  }
+  $("exportBtn").onclick = (e) => { e.stopPropagation(); toggleExport(); };
+  exportMenu.addEventListener("click", (e) => { if (e.target.closest(".menu-item")) toggleExport(false); });
+  exportMenu.addEventListener("keydown", (e) => {
+    const items = [...exportMenu.querySelectorAll(".menu-item:not(:disabled)")];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === "Escape") { e.preventDefault(); toggleExport(false); $("exportBtn").focus(); }
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+  });
+  document.addEventListener("click", (e) => { if (!exportMenu.hidden && !e.target.closest(".menu-wrap")) toggleExport(false); });
+
+  // ── delete a video ───────────────────────────────────────────────────────────────────────
+  $("deleteVideo").onclick = () => {
+    if (!state.name) return;
+    const entry = (state.workspace.videos || []).find((v) => v.name === state.name) || {};
+    $("deleteName").textContent = state.name;
+    $("deleteInfo").textContent = backend.local
+      ? "The video is removed from this page (the file on your computer is not touched)."
+      : `The file is deleted from ${state.workspace.workspace}/. This cannot be undone.`;
+    const notesOnly = backend.local && entry.missing;  // only the notes of this video are stored here
+    $("deleteReview").checked = notesOnly;
+    $("deleteReview").disabled = notesOnly;
+    $("deleteReviewInfo").textContent = entry.notes
+      ? `${entry.notes} note(s) in ${state.config ? state.config.reviewFolder : "the review"}${backend.local ? " in this browser" : "/"}, its rounds and transcript. Without this, the notes stay and come back when you add the video again.`
+      : "Its review folder and transcript, if there are any.";
+    $("deleteDialog").showModal();
+    $("deleteCancel").focus();
+  };
+  $("deleteDialog").addEventListener("close", async () => {
+    if ($("deleteDialog").returnValue !== "delete" || !state.name) return;
+    const name = state.name, withReview = $("deleteReview").checked;
+    try {
+      if (state.dirty) await save();
+      await backend.deleteVideo(name, withReview);
+      state.dirty = false;
+      const ws = await loadWorkspace();
+      const next = ws.videos.find((v) => v.name !== name && !v.missing) || ws.videos.find((v) => v.name !== name);
+      await openVideo(next ? next.name : null);
+      setStatus(`✓ Deleted ${name}${withReview ? " and its review" : " (its notes are kept)"}.`, "ok");
+    } catch (err) {
+      setStatus(`Could not delete ${name}: ${err.message}`, "error");
+    }
+  });
+
   // "Buy me a coffee": a modal dialog (Esc, ✕ or a click outside closes it)
   const coffee = $("coffeeDialog");
   $("coffee").onclick = () => coffee.showModal();
@@ -719,6 +772,7 @@
     codePrompt,
     setStatus,
     backend,
+    openVideo: (name) => openVideo(name),
   };
 
   // ── start-up ─────────────────────────────────────────────────────────────────────────────

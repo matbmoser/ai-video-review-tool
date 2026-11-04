@@ -26,6 +26,7 @@
     stream: null, offset: 0, connected: false,
     input: Promise.resolve(), // keystrokes are sent one request after the other, in order
     token: "",             // per-start token of the server (refreshed if the server restarts)
+    chat: null,            // the <deep-chat> of the conversation on screen
   };
 
   function token() { return ui.token || (review().workspace || {}).token || ""; }
@@ -209,7 +210,7 @@
     const t = (ui.status || {}).terminal;
     renderTerminalBar();
     if (!t || !t.available) {
-      message("termMsg", `${t ? t.reason : "The server did not answer."}\nYou can still use the Chat tab, or copy the prompt with “Copy prompt for Claude Code”.`, "warn");
+      message("termMsg", `${t ? t.reason : "The server did not answer."}\nYou can still use the Chat tab, or copy the prompt with “Copy for Code”.`, "warn");
       $("term").hidden = true;
       return;
     }
@@ -307,7 +308,7 @@
     "Rewrite the voice-over lines the notes ask to change",
   ];
 
-  const chats = new Map();  // video name → <deep-chat>
+  const chats = new Map();  // conversation id → <deep-chat>
   let codeTheme = "";
 
   function storageOk() {
@@ -412,6 +413,16 @@
       .vr-suggestions .deep-chat-button.deep-chat-suggestion-button:hover { border-color: ${C.claude}aa !important; background: #d977571a !important; }
       .loading-message-dots, .deep-chat-loading-message-dots-container { --loading-message-color: ${C.claude}; --loading-message-color-fade: #d9775733; }
       .error-message-text { white-space: pre-line; }
+      /* while Claude answers, a coloured border runs around the input */
+      #text-input-container { transition: box-shadow .2s; }
+      #text-input-container.vr-busy {
+        border: 1.5px solid transparent !important;
+        background: linear-gradient(${C.panel}, ${C.panel}) padding-box,
+          conic-gradient(from var(--vr-angle, 0deg), ${C.claude}, #f3c7b5, #3b82f6, #a78bfa, ${C.claude}) border-box !important;
+        animation: vr-spin 1.8s linear infinite, vr-glow 1.8s ease-in-out infinite;
+      }
+      @keyframes vr-spin { to { --vr-angle: 360deg; } }
+      @keyframes vr-glow { 0%, 100% { box-shadow: 0 0 0 3px #d977571f; } 50% { box-shadow: 0 0 14px 2px #d9775744; } }
     `;
   }
 
@@ -419,7 +430,7 @@
     const buttons = SUGGESTIONS.map((t) => `<button class="deep-chat-button deep-chat-suggestion-button">${t}</button>`).join("");
     return `<div class="vr-intro deep-chat-temporary-message"><h3>Ask Claude about this review</h3>
       <p>Claude sees your open notes, the frame of each note with your mark, and the voice-over line.
-      Answers are per note number. Your conversation is kept in this browser, one per video.</p>
+      Answers are per note number. Your conversations are kept in this browser: find them under Chats.</p>
       <div class="vr-suggestions">${buttons}</div></div>`;
   }
 
@@ -447,7 +458,7 @@
       }
       pre.append(copyButton(() => (code || pre).innerText));
     }
-    const streaming = chat.dataset.streaming === "1";
+    const streaming = busyOf(chat);
     const bubbles = [...root.querySelectorAll(".ai-message-text")];
     bubbles.forEach((bubble, i) => {
       if (bubble.querySelector(":scope > .vr-actions, .vr-intro") || bubble.classList.contains("error-message-text")) return;
@@ -463,20 +474,340 @@
     });
   }
 
+  // ── conversations: several per video, listed in "Chats", stored in this browser ──────────
+  // index (localStorage "video-review.chats.v2"): {chats: [{id, key, scope, video, title, renamed, created, updated, count}],
+  //   active: {<scope>: id}}; the messages of a chat are stored by Deep Chat under chat.key.
+  const INDEX_KEY = "video-review.chats.v2";
+  function readIndex() {
+    try {
+      const data = JSON.parse(localStorage.getItem(INDEX_KEY) || "null");
+      if (data && Array.isArray(data.chats)) return {chats: data.chats, active: data.active || {}};
+    } catch (_) { /* unreadable or blocked */ }
+    return {chats: [], active: {}};
+  }
+  function writeIndex(index) {
+    try { localStorage.setItem(INDEX_KEY, JSON.stringify(index)); } catch (_) { /* full or blocked: the chat still works */ }
+  }
+  const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  /** the conversations belong to the review folder (two folders can have a video with the same name) */
+  const scopeOf = () => ((review().config || {}).reviewPath) || review().name || "";
+
+  function storedCount(key) {
+    try { const v = JSON.parse(localStorage.getItem(key) || "null"); return v && Array.isArray(v.messages) ? v.messages.length : 0; }
+    catch (_) { return 0; }
+  }
+
+  /** adopt the one-conversation-per-video storage of the previous version */
+  function migrate(index) {
+    const scope = scopeOf();
+    const legacy = `video-review.chat.v1:${scope}`;
+    if (!scope || index.chats.some((c) => c.key === legacy) || !storedCount(legacy)) return;
+    const t = Date.now();
+    index.chats.push({id: newId(), key: legacy, scope, video: review().name, title: "Earlier conversation",
+      renamed: false, created: t, updated: t, count: storedCount(legacy)});
+    writeIndex(index);
+  }
+
+  function chatTitle(chat) {
+    const first = (chat.getMessages ? chat.getMessages() : []).find((m) => m.role === "user" && m.text);
+    const text = first ? first.text.replace(/\s+/g, " ").trim() : "";
+    return text ? (text.length > 64 ? `${text.slice(0, 61)}…` : text) : "New conversation";
+  }
+
+  /** record a conversation in the index once it has messages (drafts are not listed) */
+  function touch(chat) {
+    const index = readIndex();
+    const count = chat.getMessages ? chat.getMessages().length : 0;
+    let entry = index.chats.find((c) => c.id === chat.dataset.id);
+    if (!entry) {
+      if (!count) return;
+      entry = {id: chat.dataset.id, key: chat.dataset.key, scope: chat.dataset.scope, video: chat.dataset.video,
+        title: "", renamed: false, created: Date.now()};
+      index.chats.push(entry);
+    }
+    entry.count = count;
+    entry.updated = Date.now();
+    if (!entry.renamed) entry.title = chatTitle(chat);
+    index.active[entry.scope] = entry.id;
+    writeIndex(index);
+    renderChatList();
+  }
+
+  function busyOf(chat) {
+    const root = chat.shadowRoot;
+    return !!(root && root.querySelector(".loading-submit-button, #stop-icon"));
+  }
+
+  function createChat(entry) {
+    const chat = document.createElement("deep-chat");
+    chat._ready = new Promise((resolve) => { chat._rendered = resolve; });
+    Object.assign(chat, chatStyles());
+    Object.assign(chat.dataset, {id: entry.id, key: entry.key, scope: entry.scope, video: entry.video});
+    const name = entry.video;
+    if (storageOk()) chat.browserStorage = {key: entry.key, maxMessages: 400};
+    const showError = (text) => { chat.addMessage({error: text}); scheduleDecorate(chat); };
+    const options = () => ({model: $("chatModel").value, review: $("chatReview").checked});
+    chat.connect = local
+      ? {stream: true, handler: local.chat.handler(name, options, showError)}
+      : {url: "/api/claude/chat", stream: true};
+    chat.requestBodyLimits = {maxMessages: -1};  // the API is stateless: send the whole conversation
+    chat.remarkable = {html: false, breaks: false, typographer: true, langPrefix: "hljs language-", highlight: highlightCode};
+    chat.introMessage = {html: introHtml()};
+    chat.errorMessages = {displayServiceErrorMessages: true,
+      overrides: {default: local ? "Something went wrong. Please try again."
+        : "Could not reach the review server. Is video-review still running? Then try again."}};
+    // read for every message: a fresh token (the server may have restarted), the model and the review switch
+    if (!local) chat.requestInterceptor = async (details) => {
+      await refreshStatus().catch(() => null);  // cheap and local: picks up a restarted server's token
+      renderChatBar();
+      details.headers = {...(details.headers || {}), "X-Review-Token": token()};
+      details.body = {...details.body, video: name, ...options()};
+      return details;
+    };
+    chat.onMessage = ({isHistory}) => { if (!isHistory) { touch(chat); scheduleDecorate(chat); } };
+    chat.onError = () => scheduleDecorate(chat);
+    chat.onClearMessages = () => touch(chat);
+    chat.onComponentRender = () => {
+      setTimeout(chat._rendered, 0);  // submitUserMessage works once the first render is done
+      scheduleDecorate(chat);
+      if (!chat._observer && chat.shadowRoot) {
+        chat._observer = new MutationObserver(() => scheduleDecorate(chat));
+        chat._observer.observe(chat.shadowRoot, {childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id"]});
+      }
+      applyLock();
+    };
+    return chat;
+  }
+
+  function scheduleDecorate(chat) {
+    if (chat._decorating) return;
+    chat._decorating = true;
+    requestAnimationFrame(() => {
+      chat._observer && chat._observer.disconnect();
+      try {
+        decorate(chat);
+        const busy = busyOf(chat);
+        const box = chat.shadowRoot && chat.shadowRoot.querySelector("#text-input-container");
+        if (box) box.classList.toggle("vr-busy", busy);
+        if (chat === ui.chat) $("chatSend").disabled = busy || $("chatSend").dataset.blocked === "1";
+      } finally {
+        chat._decorating = false;
+        chat._observer && chat._observer.observe(chat.shadowRoot, {childList: true, subtree: true, attributes: true, attributeFilter: ["class", "id"]});
+      }
+    });
+  }
+
+  function elementFor(entry) {
+    let chat = chats.get(entry.id);
+    if (!chat) {
+      chat = createChat(entry);
+      chats.set(entry.id, chat);
+      $("chatHost").append(chat);
+    }
+    return chat;
+  }
+
+  function show(chat) {
+    for (const other of chats.values()) other.hidden = other !== chat;
+    ui.chat = chat;
+    const index = readIndex();
+    if (index.chats.some((c) => c.id === chat.dataset.id)) { index.active[chat.dataset.scope] = chat.dataset.id; writeIndex(index); }
+    applyLock();
+    renderChatList();
+    scheduleDecorate(chat);
+  }
+
+  /** a new, empty conversation about the current video (listed once it has a message) */
+  async function newChat() {
+    const name = review().name;
+    if (!name) return null;
+    await loadLibraries();
+    const current = ui.chat;
+    if (current && current.dataset.scope === scopeOf() && !(current.getMessages && current.getMessages().length)) {
+      show(current);  // the current one is still empty
+      return current;
+    }
+    const chat = elementFor({id: newId(), key: `video-review.chat.v2:${newId()}`, scope: scopeOf(), video: name});
+    show(chat);
+    return chat;
+  }
+
+  /** the active conversation of the current video: the last one used, or a new one */
+  async function currentChat() {
+    const name = review().name;
+    if (!name) return null;
+    await loadLibraries();
+    if (ui.chat && ui.chat.dataset.scope === scopeOf() && chats.has(ui.chat.dataset.id)) { show(ui.chat); return ui.chat; }
+    const index = readIndex();
+    migrate(index);
+    const scope = scopeOf();
+    const mine = readIndex().chats.filter((c) => c.scope === scope).sort((a, b) => b.updated - a.updated);
+    const entry = mine.find((c) => c.id === index.active[scope]) || mine[0];
+    if (!entry) return newChat();
+    const chat = elementFor(entry);
+    show(chat);
+    return chat;
+  }
+
+  async function openChat(entry) {
+    if (entry.scope !== scopeOf()) {
+      const videos = ((review().workspace || {}).videos || []).map((v) => v.name);
+      if (!videos.includes(entry.video)) return;
+      await review().openVideo(entry.video);  // switch the review too: the chat is about that video
+    }
+    await loadLibraries();
+    show(elementFor(entry));
+    toggleList(false);
+    if (ui.chat && ui.chat.focusInput && keyReady()) ui.chat.focusInput();
+  }
+
+  function deleteChat(entry) {
+    if (!confirm(`Delete the conversation “${entry.title || "New conversation"}”? This cannot be undone.`)) return;
+    const index = readIndex();
+    index.chats = index.chats.filter((c) => c.id !== entry.id);
+    if (index.active[entry.scope] === entry.id) delete index.active[entry.scope];
+    writeIndex(index);
+    try { localStorage.removeItem(entry.key); } catch (_) { /* blocked */ }
+    const chat = chats.get(entry.id);
+    if (chat) { chat.remove(); chats.delete(entry.id); }
+    if (ui.chat === chat) { ui.chat = null; currentChat(); }
+    renderChatList();
+  }
+
+  function renameChat(entry, row) {
+    const title = row.querySelector(".title");
+    const input = document.createElement("input");
+    input.className = "rename"; input.value = entry.title || ""; input.maxLength = 120;
+    input.setAttribute("aria-label", "Conversation name");
+    title.replaceWith(input);
+    input.focus(); input.select();
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      if (save && input.value.trim()) {
+        const index = readIndex();
+        const e = index.chats.find((c) => c.id === entry.id);
+        if (e) { e.title = input.value.trim(); e.renamed = true; writeIndex(index); }
+      }
+      renderChatList();
+    };
+    input.addEventListener("keydown", (ev) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter") finish(true);
+      if (ev.key === "Escape") finish(false);
+    });
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("click", (ev) => ev.stopPropagation());
+  }
+
+  function when(t) {
+    const d = new Date(t), today = new Date();
+    if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+    return d.toLocaleDateString([], {day: "numeric", month: "short", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric"});
+  }
+
+  function renderChatList() {
+    const index = readIndex();
+    const scope = scopeOf();
+    const mine = index.chats.filter((c) => c.scope === scope);
+    $("chatCount").textContent = String(mine.length);
+    if ($("chatList").hidden) return;
+    const q = $("chatSearch").value.trim().toLowerCase();
+    const match = (c) => !q || `${c.title} ${c.video}`.toLowerCase().includes(q);
+    const videos = ((review().workspace || {}).videos || []).map((v) => v.name);
+    const sorted = (list) => list.filter(match).sort((a, b) => b.updated - a.updated);
+    const groups = [["This video", sorted(mine)], ["Other videos", sorted(index.chats.filter((c) => c.scope !== scope))]];
+    const nodes = [];
+    for (const [label, list] of groups) {
+      if (!list.length) continue;
+      nodes.push(Object.assign(document.createElement("div"), {className: "chat-group", textContent: label}));
+      for (const entry of list) {
+        const other = entry.scope !== scope, available = !other || videos.includes(entry.video);
+        const row = document.createElement("div");
+        row.className = `chat-item${ui.chat && ui.chat.dataset.id === entry.id ? " active" : ""}${available ? "" : " unavailable"}`;
+        row.tabIndex = available ? 0 : -1;
+        row.setAttribute("role", "button");
+        const meta = document.createElement("span"); meta.className = "meta";
+        const title = Object.assign(document.createElement("span"), {className: "title", textContent: entry.title || "New conversation"});
+        const sub = Object.assign(document.createElement("span"), {className: "sub",
+          textContent: [other ? entry.video : null, `${entry.count || 0} message${entry.count === 1 ? "" : "s"}`, when(entry.updated),
+            available ? null : "not in this folder"].filter(Boolean).join(" · ")});
+        meta.append(title, sub);
+        const actions = document.createElement("span"); actions.className = "row-actions";
+        const btn = (text, label, fn, cls = "") => {
+          const b = Object.assign(document.createElement("button"), {textContent: text, title: label, className: cls});
+          b.setAttribute("aria-label", label);
+          b.addEventListener("click", (ev) => { ev.stopPropagation(); fn(); });
+          return b;
+        };
+        actions.append(btn("✎", "Rename", () => renameChat(entry, row)), btn("🗑", "Delete", () => deleteChat(entry), "danger"));
+        row.append(meta, actions);
+        if (available) {
+          row.addEventListener("click", () => openChat(entry));
+          row.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && ev.target === row) openChat(entry); });
+        }
+        nodes.push(row);
+      }
+    }
+    if (!nodes.length) {
+      nodes.push(Object.assign(document.createElement("div"), {className: "chat-empty",
+        textContent: q ? "No conversation matches." : "No conversations yet. Ask Claude something and it shows up here."}));
+    }
+    $("chatItems").replaceChildren(...nodes);
+  }
+
+  function toggleList(open = $("chatList").hidden) {
+    $("chatList").hidden = !open;
+    $("chatListBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderChatList(); $("chatSearch").focus(); }
+  }
+  $("chatListBtn").onclick = () => toggleList();
+  $("chatListClose").onclick = () => toggleList(false);
+  $("chatSearch").addEventListener("input", renderChatList);
+  $("chatList").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); toggleList(false); } });
+  $("chatListNew").onclick = async () => { toggleList(false); const c = await newChat(); if (c && c.focusInput && keyReady()) c.focusInput(); };
+
+  // ── API key: no key, no typing ───────────────────────────────────────────────────────────
+  const keyReady = () => !!(((ui.status || {}).chat || {}).configured);
+  function applyLock() {
+    const locked = !keyReady();
+    $("chatLock").hidden = !locked || !review().name;
+    for (const chat of chats.values()) {
+      if (chat.disableSubmitButton) chat.disableSubmitButton(locked);
+      const input = chat.shadowRoot && chat.shadowRoot.querySelector("#text-input");
+      if (input) {
+        input.setAttribute("contenteditable", locked ? "false" : "true");
+        input.setAttribute("deep-chat-placeholder-text", locked ? "Add your API key above to chat with Claude"
+          : "Message Claude…   (Enter sends, Shift+Enter new line)");
+      }
+    }
+  }
+  $("chatLockKey").onclick = () => { $("keyForm").hidden = false; $("keyInput").focus(); };
+  $("chatHost").addEventListener("click", (e) => {  // a suggestion or the input clicked without a key: point at the lock
+    if (keyReady() || $("chatLock").hidden || !e.target.closest("deep-chat")) return;
+    $("chatLock").classList.remove("nudge"); void $("chatLock").offsetWidth; $("chatLock").classList.add("nudge");
+  });
+
   function renderChatBar() {
     const c = (ui.status || {}).chat || {};
     const select = $("chatModel");
     if (!select.options.length && c.models) {
       for (const m of c.models) select.append(new Option(m.name, m.id, m.id === c.model, m.id === c.model));
     }
-    $("chatKeyText").textContent = c.configured ? (c.source === "environment" ? "Key from ANTHROPIC_API_KEY" : "API key set") : "Add API key";
+    $("chatKeyText").textContent = c.configured ? (c.source === "environment" ? "Key from environment" : "API key set") : "Add API key";
     $("chatKeyDot").className = `dot ${c.configured ? "on" : "off"}`;
     $("chatKeyBtn").disabled = !c.enabled || c.source === "environment";
     $("keyForget").hidden = c.source !== "page";
     const ready = c.enabled && review().name;
-    $("chatSend").disabled = !ready || !c.configured;
+    $("chatSend").dataset.blocked = !ready || !c.configured ? "1" : "0";
+    $("chatSend").disabled = !ready || !c.configured || (ui.chat ? busyOf(ui.chat) : false);
     $("chatNew").disabled = !ready;
+    $("chatListBtn").disabled = !c.enabled;
+    if (!c.configured && c.enabled) $("keyForm").hidden = false;
+    applyLock();
     renderContext();
+    renderChatList();
   }
 
   function renderContext() {
@@ -501,6 +832,9 @@
 
   function loadLibraries() {
     ui.libs = ui.libs || (async () => {
+      try {  // the spinning border of the input while Claude answers (must be registered on the document)
+        CSS.registerProperty({name: "--vr-angle", syntax: "<angle>", inherits: false, initialValue: "0deg"});
+      } catch (_) { /* already registered or unsupported: the border then pulses instead */ }
       if (!window.hljs) await loadScript("/static/vendor/highlight/highlight.min.js").catch(() => null);
       if (window.hljs) {  // Remotion code is mostly TSX / JSX
         window.hljs.registerAliases(["tsx", "mts", "cts"], {languageName: "typescript"});
@@ -516,73 +850,6 @@
     const hljs = window.hljs;
     if (!hljs || !lang || !hljs.getLanguage(lang)) return "";  // "" = plain, escaped by the renderer
     try { return hljs.highlight(code, {language: lang, ignoreIllegals: true}).value; } catch (_) { return ""; }
-  }
-
-  function createChat(name) {
-    const chat = document.createElement("deep-chat");
-    Object.assign(chat, chatStyles());
-    const path = (review().config || {}).reviewPath || name;
-    if (storageOk()) chat.browserStorage = {key: `video-review.chat.v1:${path}`, maxMessages: 200};
-    chat.connect = local
-      ? {stream: true, handler: local.chat.handler(name, () => {
-        chat.dataset.streaming = "1";
-        return {model: $("chatModel").value, review: $("chatReview").checked};
-      })}
-      : {url: "/api/claude/chat", stream: true};
-    chat.requestBodyLimits = {maxMessages: -1};  // the API is stateless: send the whole conversation
-    chat.remarkable = {html: false, breaks: false, typographer: true, langPrefix: "hljs language-", highlight: highlightCode};
-    chat.introMessage = {html: introHtml()};
-    chat.errorMessages = {displayServiceErrorMessages: true,
-      overrides: {default: local ? "Something went wrong. Please try again."
-        : "Could not reach the review server. Is video-review still running? Then try again."}};
-    // read for every message: a fresh token (the server may have restarted), the model and the review switch
-    if (!local) chat.requestInterceptor = async (details) => {
-      await refreshStatus().catch(() => null);  // cheap and local: picks up a restarted server's token
-      if (ui.status && ui.status.chat && !ui.status.chat.configured) { $("keyForm").hidden = false; }
-      renderChatBar();
-      details.headers = {...(details.headers || {}), "X-Review-Token": token()};
-      details.body = {...details.body, video: name, model: $("chatModel").value, review: $("chatReview").checked};
-      chat.dataset.streaming = "1";
-      return details;
-    };
-    chat.onMessage = ({isHistory}) => { if (!isHistory) { chat.dataset.streaming = "0"; scheduleDecorate(chat); } };
-    chat.onError = () => { chat.dataset.streaming = "0"; scheduleDecorate(chat); };
-    chat.onComponentRender = () => {
-      scheduleDecorate(chat);
-      if (!chat._observer && chat.shadowRoot) {
-        chat._observer = new MutationObserver(() => scheduleDecorate(chat));
-        chat._observer.observe(chat.shadowRoot, {childList: true, subtree: true});
-      }
-    };
-    chat.dataset.video = name;
-    return chat;
-  }
-
-  function scheduleDecorate(chat) {
-    if (chat._decorating) return;
-    chat._decorating = true;
-    requestAnimationFrame(() => {
-      chat._observer && chat._observer.disconnect();
-      try { decorate(chat); } finally {
-        chat._decorating = false;
-        chat._observer && chat._observer.observe(chat.shadowRoot, {childList: true, subtree: true});
-      }
-    });
-  }
-
-  /** the conversation of the current video (created on first use, kept while the page is open) */
-  async function currentChat() {
-    const name = review().name;
-    if (!name) return null;
-    await loadLibraries();
-    let chat = chats.get(name);
-    if (!chat) {
-      chat = createChat(name);
-      chats.set(name, chat);
-      $("chatHost").append(chat);
-    }
-    for (const other of chats.values()) other.hidden = other !== chat;
-    return chat;
   }
 
   async function showChat() {
@@ -604,7 +871,9 @@
     if (!c.configured) $("keyInput").focus();
   }
 
-  document.addEventListener("review:video", () => { if (!drawer.hidden && ui.tab === "chat") showChat(); });
+  document.addEventListener("review:video", () => {
+    if (!drawer.hidden && ui.tab === "chat") showChat(); else renderChatList();
+  });
 
   $("chatKeyBtn").onclick = () => { $("keyForm").hidden = !$("keyForm").hidden; if (!$("keyForm").hidden) $("keyInput").focus(); };
   $("keyForm").addEventListener("submit", async (e) => {
@@ -616,6 +885,7 @@
       $("keyInput").value = "";
       $("keyForm").hidden = true;
       message("chatMsg", "");
+      renderChatBar();
       const chat = await currentChat();
       if (chat && chat.focusInput) chat.focusInput();
     } catch (err) {
@@ -625,24 +895,20 @@
   });
   $("keyForget").onclick = async () => {
     ui.status.chat = await post("/api/claude/key", {key: null}).catch(() => ui.status.chat);
-    $("keyForm").hidden = ui.status.chat.configured;
     renderChatBar();
   };
 
   $("chatNew").onclick = async () => {
-    const chat = await currentChat();
-    if (!chat) return;
-    const messages = chat.getMessages ? chat.getMessages() : [];
-    if (messages.length && !confirm(`Start a new chat about ${review().name}? This conversation is deleted.`)) return;
-    chat.dataset.streaming = "0";
-    chat.clearMessages(true);
-    if (chat.focusInput) chat.focusInput();
+    const chat = await newChat();
+    if (chat && chat.focusInput && keyReady()) chat.focusInput();
   };
 
   $("chatSend").onclick = async () => {
-    if (!review().name) return;
+    if (!review().name || !keyReady()) return;
     await review().save();
     const chat = await currentChat();
+    await chat._ready;
+    if (busyOf(chat)) return;
     $("chatReview").checked = true;
     renderContext();
     const open = review().openNotes();
@@ -664,7 +930,7 @@
     if (ui.tab === "code" && !(s.terminal && s.terminal.available) && s.chat && s.chat.enabled) await selectTab("chat");
     if (ui.tab === "code") $("termSend").click();
     else if (s.chat && s.chat.configured) $("chatSend").click();
-    else $("keyInput").focus();
+    else { $("keyForm").hidden = false; $("keyInput").focus(); }
   };
 
   // the session may already run (page reload): reconnect the terminal when the drawer opens

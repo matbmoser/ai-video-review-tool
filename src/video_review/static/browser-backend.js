@@ -406,6 +406,20 @@
       return {transcript: segments, summary: summary(name, await getRecord(name))};
     },
 
+    async deleteVideo(name, withReview) {
+      const f = files.get(name);
+      if (f) { URL.revokeObjectURL(f.url); files.delete(name); }
+      if (withReview) {
+        const keys = await blobKeys(blobKey(name, ""));
+        const tx = (await db()).transaction(["reviews", "blobs"], "readwrite");
+        for (const key of keys) tx.objectStore("blobs").delete(key);
+        tx.objectStore("reviews").delete(name);
+        await finished(tx);
+        for (const [key, url] of shotUrls) if (key.startsWith(`${name}\u0000`)) { URL.revokeObjectURL(url); shotUrls.delete(key); }
+      }
+      return {deleted: name, review: !!withReview};
+    },
+
     async markdown(name) { return renderMarkdown((await getRecord(name)).doc || emptyDoc(name)); },
 
     async exportZip(name, filename) {
@@ -558,21 +572,30 @@
       return backend.chat.status();
     },
     forgetKey() { apiKey = null; return backend.chat.status(); },
-    /** a Deep Chat stream handler for the conversation about `name` */
-    handler(name, options) {
+    /** a Deep Chat stream handler for the conversation about `name`; `showError` shows an error that happens
+     *  before any text arrived (Deep Chat cannot show a stream error before the first chunk) */
+    handler(name, options, showError) {
       return async (body, signals) => {
         const controller = new AbortController();
         signals.stopClicked.listener = () => controller.abort();
+        let streaming = false;
         try {
-          if (!apiKey) fail("No API key yet: paste your Anthropic API key above.");
+          if (!apiKey) fail("No API key yet: add your Anthropic API key above to chat.");
           const {model, review} = options();
           const res = await openStream(await buildRequest(body.messages, name, review, model), controller.signal);
           signals.onOpen();
-          for await (const t of textDeltas(res)) if (t) await signals.onResponse({text: t});  // in order
+          for await (const t of textDeltas(res)) {
+            if (!t) continue;
+            streaming = true;
+            await signals.onResponse({text: t});  // in order
+          }
           signals.onClose();
         } catch (err) {
+          const text = err.message || String(err);
           if (controller.signal.aborted) { signals.onClose(); return; }
-          await signals.onResponse({error: err.message || String(err)});
+          if (streaming) { await signals.onResponse({error: text}); return; }
+          signals.onClose();
+          showError(text);
         }
       };
     },
