@@ -301,3 +301,7 @@ input.switch:checked::after { transform: translateX(13px); }
   .drawer { width: 100vw; }
   .drawer-resize { display: none; }
 }
+
+/* the browser-only (GitHub Pages) version */
+.browser-note { padding: 6px 8px; border-radius: 6px; background: #3b82f612; border: 1px solid #3b82f633; line-height: 1.45; }
+.browser-note a { color: var(--blue); }

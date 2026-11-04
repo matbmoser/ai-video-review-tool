@@ -16,9 +16,11 @@
   const review = () => window.VideoReview;
   const drawer = $("drawer");
   const MIN_W = 340, DEFAULT_W = 620;
+  // the GitHub Pages version: no server, so no Claude Code terminal; the chat talks to the API directly
+  const local = window.VideoReviewBrowserBackend || null;
 
   const ui = {
-    tab: "code",
+    tab: local ? "chat" : "code",
     status: null,          // GET /api/claude
     term: null, fit: null, // xterm.js
     stream: null, offset: 0, connected: false,
@@ -29,6 +31,10 @@
   function token() { return ui.token || (review().workspace || {}).token || ""; }
 
   async function post(path, body, retried = false) {
+    if (local) {  // only the API key exists without a server
+      if (path !== "/api/claude/key") throw new Error("not available in the browser version");
+      return body && body.key ? local.chat.setKey(body.key) : local.chat.forgetKey();
+    }
     const res = await fetch(path, {method: "POST", body: JSON.stringify(body || {}),
       headers: {"Content-Type": "application/json", "X-Review-Token": token()}});
     const data = await res.json().catch(() => ({}));
@@ -41,6 +47,11 @@
   }
 
   async function refreshStatus() {
+    if (local) {
+      ui.status = {terminal: {available: false, reason: "Claude Code needs the installed tool (pip install …)."},
+        chat: local.chat.status()};
+      return ui.status;
+    }
     const res = await fetch("/api/claude", {cache: "no-store"});
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     ui.status = await res.json();
@@ -512,14 +523,20 @@
     Object.assign(chat, chatStyles());
     const path = (review().config || {}).reviewPath || name;
     if (storageOk()) chat.browserStorage = {key: `video-review.chat.v1:${path}`, maxMessages: 200};
-    chat.connect = {url: "/api/claude/chat", stream: true};
+    chat.connect = local
+      ? {stream: true, handler: local.chat.handler(name, () => {
+        chat.dataset.streaming = "1";
+        return {model: $("chatModel").value, review: $("chatReview").checked};
+      })}
+      : {url: "/api/claude/chat", stream: true};
     chat.requestBodyLimits = {maxMessages: -1};  // the API is stateless: send the whole conversation
     chat.remarkable = {html: false, breaks: false, typographer: true, langPrefix: "hljs language-", highlight: highlightCode};
     chat.introMessage = {html: introHtml()};
     chat.errorMessages = {displayServiceErrorMessages: true,
-      overrides: {default: "Could not reach the review server. Is video-review still running? Then try again."}};
+      overrides: {default: local ? "Something went wrong. Please try again."
+        : "Could not reach the review server. Is video-review still running? Then try again."}};
     // read for every message: a fresh token (the server may have restarted), the model and the review switch
-    chat.requestInterceptor = async (details) => {
+    if (!local) chat.requestInterceptor = async (details) => {
       await refreshStatus().catch(() => null);  // cheap and local: picks up a restarted server's token
       if (ui.status && ui.status.chat && !ui.status.chat.configured) { $("keyForm").hidden = false; }
       renderChatBar();
@@ -634,6 +651,13 @@
   };
 
   // ── "✦ Send to Claude" in the notes panel ────────────────────────────────────────────────
+  if (local) {  // one tab only: the chat
+    $("tabCode").hidden = true;
+    $("paneCode").hidden = true;
+    $("tabChat").textContent = "Chat with Claude (API key)";
+    $("sendClaude").title = "Open the chat with Claude (your own Anthropic API key) and send the review";
+  }
+
   $("sendClaude").onclick = async () => {
     await openDrawer();
     const s = ui.status || {};
