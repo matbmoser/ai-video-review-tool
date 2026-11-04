@@ -43,6 +43,8 @@ All notable changes to this project are documented here. The format follows
 - An **Export** menu with "Copy for Claude Code", "Copy for Claude chat" and "Download review (.zip)"; a
   GitHub link in the top bar; the MIT license notice in the page.
 
+- `DEPENDENCIES.md`: the third-party software the tool uses or ships, with versions and licenses.
+
 ### Fixed
 - The browser version's chat no longer spins forever when it fails before the first word (e.g. no key).
 - Full screen chat fits the window (no cut-off edge, no horizontal scrollbar).

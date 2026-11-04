@@ -216,6 +216,7 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
 | [docs/architecture.md](docs/architecture.md) | how the tool is built, HTTP API, security model |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | development setup, tests, conventions |
 | [SECURITY.md](SECURITY.md) | reporting vulnerabilities |
+| [DEPENDENCIES.md](DEPENDENCIES.md) | third-party software it uses or ships (vendored libraries and their licenses) |
 
 ## Privacy and security
 
@@ -249,6 +250,6 @@ If this tool saves you time, you can [buy me a coffee with PayPal](https://paypa
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled browser libraries keep their own licenses (MIT and BSD-3-Clause), see [DEPENDENCIES.md](DEPENDENCIES.md).
 
 Made with ♥ by [Mathias Brunkow Moser](https://github.com/matbmoser).

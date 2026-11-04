@@ -11,4 +11,4 @@ works offline and without a build step. They are only loaded when the ✦ Claude
 | [Deep Chat](https://deepchat.dev) | 2.5.1 | `deep-chat/deepChat.bundle.js` | MIT, `deep-chat/LICENSE` | npm `deep-chat` (`dist/deepChat.bundle.js`) |
 
 To update one, download the package (`npm pack <name>@<version>`), copy the files listed above and
-update this table and `CHANGELOG.md`.
+update this table, `DEPENDENCIES.md` at the repository root and `CHANGELOG.md`.
