@@ -298,12 +298,13 @@ def test_chat_route_streams_from_the_api(claude_server, monkeypatch):
     def fake_urlopen(req, timeout):
         seen["body"] = json.loads(req.data)
         return Response(b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Note 1: "}}\n'
-                        b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"done"}}\n')
+                        b'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"done"}}\n'
+                        b'data: {"type":"message_stop"}\n')
 
     monkeypatch.setattr(claude_api.urllib.request, "urlopen", fake_urlopen)
     payload = {"messages": [{"role": "user", "text": "help"}], "video": "demo.mp4", "review": True}
     res, body = request(srv, "POST", "/api/claude/chat", payload, headers=auth)
-    assert res.status == 200 and b"no API key" in body  # shown in the chat as {"error": ...}
+    assert res.status == 200 and b"No API key" in body  # shown in the chat as {"error": ...}
 
     res, body = request(srv, "POST", "/api/claude/key", {"key": "short"}, headers=auth)
     assert res.status == 400

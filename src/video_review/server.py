@@ -93,7 +93,8 @@ class ReviewApp:
             self.chat.enabled, self.chat.disabled_reason = False, reason
 
     def claude_status(self) -> dict[str, Any]:
-        return {"terminal": self.terminal.status(), "chat": self.chat.status()}
+        # the token is readable by the page only (no CORS), so it can recover after a server restart
+        return {"terminal": self.terminal.status(), "chat": self.chat.status(), "token": self.token}
 
     def workspace_info(self) -> dict[str, Any]:
         ws = self.workspace
@@ -375,9 +376,14 @@ def make_handler(app: ReviewApp, allowed_hosts: set | None = None) -> type:
                     if text:
                         self._sse({"text": text})
             except ChatError as exc:
-                self._sse({"error": str(exc)})
-            except (BrokenPipeError, ConnectionResetError):
-                return None
+                try:
+                    self._sse({"error": str(exc)})
+                except OSError:
+                    pass
+            except OSError:
+                pass  # the page stopped the answer or was closed
+            finally:
+                answer.close()  # also closes the connection to the API
             return None
 
         def _sse(self, data: dict[str, Any]) -> None:
