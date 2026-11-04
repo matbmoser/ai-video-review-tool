@@ -98,7 +98,7 @@ review and changes the code.
 | You use … | Hand the review over with … |
 | --- | --- |
 | **Claude Code, inside the review page** | **✦ Send to Claude** → *Claude Code* tab: the real `claude` CLI runs in a terminal in the side panel, in your project folder (`--project`), and gets the review prompt. Watch it work and answer its questions without leaving the video. |
-| **the Claude API (your own key)** | **✦ Send to Claude** → *Chat (API key)* tab: a chat about the review; the open notes and their screenshots are sent along. Paste your key in the panel or set `ANTHROPIC_API_KEY`. |
+| **the Claude API (your own key)** | **✦ Send to Claude** → *Chat (API key)* tab: a chat about the review, one conversation per video; the open notes and their screenshots are sent along, answers come with coloured, copyable code, and overload or network errors are retried. Paste your key in the panel or set `ANTHROPIC_API_KEY`. |
 | **Claude Code** | **Copy prompt for Claude Code**: Claude reads the review folder itself. Install the included skill once and *"check my video review"* is enough: `cp -r integrations/claude/skills/apply-video-review .claude/skills/` |
 | **Claude desktop app** | the **MCP server**: add `video-review /path/to/renders --mcp` to the app's MCP config, then ask *"check my video review"*. Claude fetches the notes and screenshots and can tick notes as done. |
 | **claude.ai** or the **mobile app** | **Copy for Claude chat** (prompt + the whole review as text), paste it and attach the screenshots from `shots/`, or attach the **Download review (.zip)** file |
@@ -211,7 +211,8 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
 - No telemetry, no accounts: the page loads nothing from the internet (xterm.js and Deep Chat are bundled).
   The only outgoing requests are the ones you start in the ✦ Claude panel: Claude Code talks to
   Anthropic as it always does, and the API chat sends your messages, the open notes and their screenshots
-  to `api.anthropic.com`.
+  to `api.anthropic.com`. Chat conversations are kept in your browser's local storage (one per video);
+  **＋ New chat** deletes one.
 - **Your API key stays yours**: it is read from `ANTHROPIC_API_KEY` or pasted into the panel, kept in the
   memory of the local server only (never written to disk, never sent back to the page) and gone when the
   tool stops. The repository contains no keys.

@@ -82,10 +82,25 @@ The **Chat (API key)** tab is a chat with Claude through the Anthropic API, buil
 1. Paste the key in the panel (or start the tool with `ANTHROPIC_API_KEY` set, then nothing needs to be
    pasted). The key is kept in the memory of the local server only: it is never written to disk, never
    sent back to the page, and is gone when the tool stops. **Forget** removes it earlier.
-2. Click **Send review**, or just ask a question. With **include review** on, the open notes of the
-   current video (as text, like `REVIEW.md`) and up to 20 screenshots are sent with the conversation, so
-   Claude sees the marks you drew. The review is sent with prompt caching, so follow-up questions are cheap.
+2. Click **Send review**, pick one of the suggestions, or just ask a question. The strip above the chat
+   shows what Claude sees, e.g. *"Claude sees 3 open notes and 3 screenshots of launch.mp4"*: the open
+   notes of the current video (as text, like `REVIEW.md`) and up to 20 screenshots are sent with the
+   conversation, so Claude sees the marks you drew. Its switch turns that off. Claude always gets the
+   current notes, so you can keep editing the review while you chat. The review is sent with prompt caching,
+   so follow-up questions are cheap.
 3. Pick the model in the panel; `--claude-model` sets the default (`claude-sonnet-5-5`).
+
+What to expect from the chat:
+
+- **One conversation per video**, kept in your browser, so it is still there after a reload or a restart of
+  the tool. **＋ New chat** deletes it and starts over.
+- Answers stream in, with Markdown, tables and **syntax-coloured code**. Every code block has a **Copy**
+  button and every answer a **Copy answer** button. The ■ button stops an answer.
+- **It recovers by itself**: if the API is overloaded or rate-limited, or the network hiccups, the tool
+  retries up to three times (1 s, 2 s, 4 s, or as long as the API asks) before showing an error. If an
+  answer breaks off, you see what arrived and a clear error, and the next message works normally. If the
+  tool was restarted, the page picks up the new session by itself (paste the key again if you had pasted it).
+- An answer that reaches the length limit says so; ask Claude to continue.
 
 The chat can explain and plan, and write code you copy into your project; it cannot change your files.
 For that, use the Claude Code tab. `--no-chat` turns the chat off.

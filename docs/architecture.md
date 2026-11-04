@@ -76,7 +76,15 @@ The terminal is a pseudo-terminal (`os.openpty`) whose program becomes the sessi
 controlling terminal, so Claude Code's interactive UI, colors, resizing and Ctrl+C work. The chat turns
 Deep Chat's messages into a Messages API request (roles alternated, the review prepended to the first user
 message as text plus base64 image blocks with `cache_control`), sends it with `urllib` (which honours
-`HTTPS_PROXY`) and forwards the `text_delta` events.
+`HTTPS_PROXY`) and forwards the `text_delta` events. Errors before the answer starts (HTTP 408, 409, 429,
+5xx, 529 and network errors) are retried up to 4 attempts with backoff or `retry-after`; a stream that
+ends without `message_stop` or with an `error` event becomes a `data: {"error": …}` event. The connection
+to the API is closed as soon as the page stops an answer. Screenshots are limited to 20 images, 3.7 MB each
+and 18 MB in total per request.
+
+In the page, every video gets its own `<deep-chat>` element with Deep Chat's `browserStorage`
+(`localStorage` key `video-review.chat.v1:<review folder>`). Code is coloured by highlight.js through Deep
+Chat's Markdown renderer; copy buttons are added to its shadow DOM with a `MutationObserver`.
 
 ## MCP server
 

@@ -21,6 +21,15 @@ All notable changes to this project are documented here. The format follows
     screenshots are sent along, with prompt caching. Options `--claude-model`, `--no-chat`.
   - Only offered on localhost; every request needs a per-start token.
 - Vendored xterm.js 6.0.0, @xterm/addon-fit 0.11.0 and Deep Chat 2.5.1 (MIT), see `static/vendor/README.md`.
+- API chat, polished and hardened:
+  - one conversation per video, kept in the browser across reloads and restarts; "＋ New chat"
+  - a Claude-style layout (answers as text with an avatar, your messages as bubbles), suggestions to start,
+    a strip that shows what Claude sees (open notes and screenshots) with a switch
+  - syntax-coloured code (highlight.js 11.11.1, BSD-3-Clause, vendored), copy buttons for code blocks and
+    answers, tables, quotes
+  - retries with backoff for overloaded / rate-limited / network errors, clear errors for answers that break
+    off, a note when an answer reaches the length limit, a size budget for screenshots
+  - picks up a restarted server's session token by itself; error bubbles are not sent back to Claude
 
 ### Changed
 - "Copy prompt for Claude" is now "Copy prompt for Claude Code" (both copy buttons stay).
