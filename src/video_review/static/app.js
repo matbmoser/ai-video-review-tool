@@ -81,14 +81,37 @@
     return body;
   }
 
-  const videoApi = (suffix = "") => `/api/videos/${enc(state.name)}${suffix}`;
-  const shotUrl = (shot) => `${videoApi("/shots/")}${enc(shot.replace(/^shots\//, ""))}`;
+
+  /** where reviews live: the local Python server (default), or this browser (the GitHub Pages version,
+   *  which defines window.VideoReviewBrowserBackend in browser-backend.js) */
+  const serverBackend = {
+    local: false,
+    workspace: () => api("/api/workspace"),
+    config: (name) => api(`/api/videos/${enc(name)}/config`),
+    review: (name) => api(`/api/videos/${enc(name)}/review`),
+    save: (name, payload) => api(`/api/videos/${enc(name)}/review`, {method: "POST", body: JSON.stringify(payload)}),
+    archive: (name) => api(`/api/videos/${enc(name)}/review/archive`, {method: "POST", body: "{}"}),
+    uploadVideo: (file, onProgress) => putFile(`/api/videos/${enc(file.name)}`, file, onProgress),
+    uploadTranscript: (name, file) => putFile(`/api/videos/${enc(name)}/transcript?filename=${enc(file.name)}`, file),
+    async markdown(name) {
+      const res = await fetch(`/api/videos/${enc(name)}/markdown`);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.text();
+    },
+    async exportZip(name, filename) {
+      const a = el("a", {href: `/api/videos/${enc(name)}/export`, download: filename});
+      document.body.append(a); a.click(); a.remove();
+    },
+    shotUrl: (name, shot, stamp) => `/api/videos/${enc(name)}/shots/${enc(shot.replace(/^shots\//, ""))}?v=${stamp}`,
+  };
+  const backend = window.VideoReviewBrowserBackend || serverBackend;
 
   // ── workspace & video selection ──────────────────────────────────────────────────────────
   async function loadWorkspace() {
-    state.workspace = await api("/api/workspace");
+    state.workspace = await backend.workspace();
     const ws = state.workspace;
     for (const id of ["uploadBtn", "transcriptBtn", "emptyUpload"]) $(id).hidden = !ws.uploads;
+    if (backend.local) $("uploadBtn").textContent = "📂 Open video";
     renderVideoSelect();
     return ws;
   }
@@ -123,7 +146,7 @@
     }
     showEmpty(false);
     try {
-      const [config, review] = await Promise.all([api(videoApi("/config")), api(videoApi("/review"))]);
+      const [config, review] = await Promise.all([backend.config(name), backend.review(name)]);
       state.config = config;
       state.fps = config.fps || 30;
       state.kinds = config.kinds && config.kinds.length ? config.kinds : state.kinds;
@@ -131,12 +154,20 @@
       document.title = `Review · ${config.title}`;
       $("meta").textContent = [`${state.fps} fps`,
         state.transcript.length ? `${state.transcript.length} transcript lines (${config.transcriptFile})` : "no transcript"].join(" · ");
-      $("folder").textContent = `Saved to ${config.reviewFolder}/ (notes.json · REVIEW.md · shots/)` +
+      $("folder").textContent = (backend.local
+        ? `Saved in this browser · ⬇ Download review gives you ${config.reviewFolder}/ as a zip`
+        : `Saved to ${config.reviewFolder}/ (notes.json · REVIEW.md · shots/)`) +
         (config.rounds && config.rounds.length ? ` · ${config.rounds.length} earlier round(s)` : "");
       loadNotes(review);
-      if (config.type) video.setAttribute("type", config.type);
-      video.src = config.url;
-      setStatus(review.savedAt ? `Loaded ${state.notes.length} note(s).` : "");
+      if (config.url) {
+        if (config.type) video.setAttribute("type", config.type);
+        video.src = config.url;
+        setStatus(review.savedAt ? `Loaded ${state.notes.length} note(s).` : "");
+      } else {  // the browser version keeps the notes, but the video file has to be opened again
+        video.removeAttribute("src"); video.load();
+        showEmpty(true, name);
+        setStatus(`Open ${name} again to see the video. Its ${state.notes.length} note(s) are kept.`, "busy");
+      }
     } catch (err) {
       setStatus(`Could not open ${name}: ${err.message}`, "error");
     }
@@ -145,13 +176,16 @@
     document.dispatchEvent(new CustomEvent("review:video", {detail: {name}}));
   }
 
-  function showEmpty(empty) {
+  function showEmpty(empty, missing = null) {
     $("emptyStage").hidden = !empty;
     $("hint").hidden = empty;
     stage.classList.toggle("is-empty", empty);
-    for (const id of ["transcriptBtn", "save", "sendClaude", "copyPrompt", "copyChat", "exportZip", "newRound", "play", "back", "fwd"]) {
-      $(id).disabled = empty;
+    $("emptyTitle").textContent = missing ? `Open ${missing} again` : "Drop a video here";
+    for (const id of ["play", "back", "fwd"]) $(id).disabled = empty;
+    for (const id of ["transcriptBtn", "save", "sendClaude", "copyPrompt", "copyChat", "exportZip", "newRound"]) {
+      $(id).disabled = empty && !missing;  // the notes of a video that has to be re-opened stay usable
     }
+    if (missing) return;
     if (empty) {
       document.title = "Video review";
       $("meta").textContent = state.workspace ? `${state.workspace.workspace}/ · no videos yet` : "";
@@ -160,12 +194,12 @@
   }
 
   function loadNotes(review) {
-    const stamp = Date.now();
+    const stamp = Date.now();  // cache buster for re-saved screenshots
     state.notes = (review.notes || []).map((n) => ({
       ...n,
       status: n.status || "open",
       // saved shots come from the server; new shots stay as data URLs until they are saved
-      preview: n.shot ? `${shotUrl(n.shot)}?v=${stamp}` : null,
+      preview: n.shot ? backend.shotUrl(state.name, n.shot, stamp) : null,
     }));
     state.nextId = state.notes.reduce((m, n) => Math.max(m, n.id), 0) + 1;
   }
@@ -212,16 +246,16 @@
     if (file.size > state.workspace.maxUploadBytes) return setStatus(`${file.name} is larger than the upload limit.`, "error");
     if (state.uploading) return setStatus("Another upload is still running.", "busy");
     const existing = state.workspace.videos.find((v) => v.name === file.name);
-    if (existing && !confirm(`Replace ${file.name} with the new file? Its notes are kept.`)) return;
+    if (existing && !existing.missing && !confirm(`Replace ${file.name} with the new file? Its notes are kept.`)) return;
     if (state.dirty) await save();
     state.uploading = true;
     try {
       progress(0, `Uploading ${file.name}…`);
-      const info = await putFile(`/api/videos/${enc(file.name)}`, file,
+      const info = await backend.uploadVideo(file,
         (f) => progress(f, `Uploading ${file.name} · ${Math.round(f * 100)}% of ${bytes(file.size)}`));
       await loadWorkspace();
       await openVideo(info.name);
-      setStatus(`✓ Uploaded ${info.name}${info.notes ? ` · ${info.notes} earlier note(s) kept` : ""}`, "ok");
+      setStatus(`✓ ${backend.local ? "Opened" : "Uploaded"} ${info.name}${info.notes ? ` · ${info.notes} earlier note(s) kept` : ""}`, "ok");
     } catch (err) {
       setStatus(`Upload failed: ${err.message}`, "error");
     } finally {
@@ -234,7 +268,7 @@
     if (!state.name) return setStatus("Open or upload a video first, then add its transcript.", "error");
     if (!isTranscriptFile(file)) return setStatus("Transcripts must be .json, .srt or .vtt files.", "error");
     try {
-      const res = await putFile(`${videoApi("/transcript")}?filename=${enc(file.name)}`, file);
+      const res = await backend.uploadTranscript(state.name, file);
       await openVideo(state.name);
       setStatus(`✓ Transcript added: ${(res.transcript || []).length} line(s). New notes are linked to the spoken line.`, "ok");
     } catch (err) {
@@ -560,7 +594,7 @@
     const name = state.name;
     const payload = {notes: state.notes.map(({preview, ...n}) => ({...n, shot: n.shot || null}))};
     try {
-      const doc = await api(`/api/videos/${enc(name)}/review`, {method: "POST", body: JSON.stringify(payload)});
+      const doc = await backend.save(name, payload);
       if (name === state.name) {
         // keep what was typed meanwhile; adopt the server's screenshot paths
         const byId = new Map(doc.notes.map((n) => [n.id, n]));
@@ -592,7 +626,7 @@
     if (!state.notes.length) { setStatus("Nothing to archive yet."); return; }
     if (!confirm("Move all current notes to rounds/ and start an empty review round?")) return;
     try {
-      const res = await api(videoApi("/review/archive"), {method: "POST", body: "{}"});
+      const res = await backend.archive(state.name);
       state.notes = []; state.nextId = 1; state.activeId = null;
       render(); renderMarkers(); drawMarks();
       await loadWorkspace();
@@ -604,8 +638,12 @@
 
   $("exportZip").onclick = async () => {
     if (state.dirty) await save();
-    const a = el("a", {href: videoApi("/export"), download: `${state.config.reviewFolder}.zip`});
-    document.body.append(a); a.click(); a.remove();
+    try {
+      await backend.exportZip(state.name, `${state.config.reviewFolder}.zip`);
+    } catch (err) {
+      setStatus(`Could not create the zip: ${err.message}`, "error");
+      return;
+    }
     setStatus("Downloading the review as a zip. Attach it to Claude together with the prompt.", "ok");
   };
 
@@ -614,7 +652,9 @@
     const folder = state.config.reviewFolder;
     const open = state.notes.filter((n) => n.status !== "done").length;
     return [
-      `Please implement my video review of ${state.name} in ${folder}/ (full path: ${state.config.reviewPath}).`,
+      backend.local
+        ? `Please implement my video review of ${state.name} in ${folder}/ (I unzipped ${folder}.zip from the review tool there).`
+        : `Please implement my video review of ${state.name} in ${folder}/ (full path: ${state.config.reviewPath}).`,
       `Read ${folder}/REVIEW.md (and notes.json for exact values) and look at every screenshot in ${folder}/shots/.`,
       `There are ${open} open note(s). Each note is one change at an exact frame (${state.fps} fps); the red pin or box shows where.`,
       "Implement all open notes, then tell me per note number what you changed, and ask if a note is unclear.",
@@ -639,9 +679,7 @@
     const withShots = state.notes.filter((n) => n.status !== "done" && n.shot).length;
     let markdown = "";
     try {
-      const res = await fetch(videoApi("/markdown"));
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      markdown = await res.text();
+      markdown = await backend.markdown(state.name);
     } catch (err) {
       setStatus(`Could not load the review text: ${err.message}`, "error");
       return;
@@ -680,6 +718,7 @@
     save: async () => { if (state.dirty || state.saving) await save(); },
     codePrompt,
     setStatus,
+    backend,
   };
 
   // ── start-up ─────────────────────────────────────────────────────────────────────────────
