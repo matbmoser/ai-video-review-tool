@@ -1,0 +1,47 @@
+name: GitHub Pages
+
+# Publishes the browser-only version of the review tool (no server, no Claude Code terminal) to
+# https://matbmoser.github.io/ai-video-review-tool/
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "src/video_review/**"
+      - "scripts/build_pages.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Build the site
+        run: python scripts/build_pages.py _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

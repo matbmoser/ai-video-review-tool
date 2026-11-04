@@ -32,3 +32,4 @@ htmlcov/
 
 # Keep the example review in the repository
 !examples/sample.review/
+_site/
