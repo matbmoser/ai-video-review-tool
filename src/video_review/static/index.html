@@ -127,13 +127,13 @@
     </section>
 
     <section class="pane" id="paneChat" role="tabpanel" aria-labelledby="tabChat" hidden>
-      <div class="pane-bar">
-        <select id="chatModel" aria-label="Model"></select>
-        <label class="toggle muted" title="Add the open notes and their screenshots of the current video to the conversation">
-          <input type="checkbox" id="chatReview" checked> include review</label>
+      <div class="pane-bar chat-bar">
+        <select class="model-select" id="chatModel" aria-label="Model" title="Model used for the next message"></select>
+        <button class="chip" id="chatKeyBtn" title="Set or change your Anthropic API key">
+          <span class="dot" id="chatKeyDot"></span><span id="chatKeyText">API key</span></button>
         <span class="spacer"></span>
-        <button class="primary" id="chatSend" title="Ask Claude to go through the open notes">Send review</button>
-        <button id="chatKeyBtn" title="Set or change your Anthropic API key">API key</button>
+        <button id="chatNew" title="Start a new conversation about this video (the current one is deleted)">＋ New chat</button>
+        <button class="primary" id="chatSend" title="Ask Claude for a plan per open note">Send review</button>
       </div>
       <form class="key-form" id="keyForm" hidden autocomplete="off">
         <label for="keyInput">Your Anthropic API key</label>
@@ -146,6 +146,10 @@
           the page again) and sent only to api.anthropic.com. Or start the tool with <code>ANTHROPIC_API_KEY</code> set.
           Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>.</p>
       </form>
+      <label class="context-strip" title="Send the open notes and their screenshots of the current video with the conversation">
+        <input type="checkbox" class="switch" id="chatReview" checked>
+        <span class="context-text" id="chatContext">Claude sees the open notes of this video</span>
+      </label>
       <div class="pane-msg" id="chatMsg" hidden></div>
       <div class="chat-host" id="chatHost"></div>
     </section>

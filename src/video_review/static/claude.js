@@ -23,22 +23,28 @@
     term: null, fit: null, // xterm.js
     stream: null, offset: 0, connected: false,
     input: Promise.resolve(), // keystrokes are sent one request after the other, in order
-    chat: null,            // <deep-chat>
+    token: "",             // per-start token of the server (refreshed if the server restarts)
   };
 
-  function token() { return (review().workspace || {}).token || ""; }
+  function token() { return ui.token || (review().workspace || {}).token || ""; }
 
-  async function post(path, body) {
+  async function post(path, body, retried = false) {
     const res = await fetch(path, {method: "POST", body: JSON.stringify(body || {}),
       headers: {"Content-Type": "application/json", "X-Review-Token": token()}});
     const data = await res.json().catch(() => ({}));
+    if (res.status === 403 && !retried) {  // the server was restarted: get its new token and try once more
+      await refreshStatus().catch(() => null);
+      return post(path, body, true);
+    }
     if (!res.ok) throw new Error(data.error || `${res.status} ${res.statusText}`);
     return data;
   }
 
   async function refreshStatus() {
-    const res = await fetch("/api/claude");
+    const res = await fetch("/api/claude", {cache: "no-store"});
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     ui.status = await res.json();
+    if (ui.status.token) ui.token = ui.status.token;
     return ui.status;
   }
 
@@ -278,30 +284,173 @@
   };
 
   // ── chat through the Anthropic API (Deep Chat) ───────────────────────────────────────────
-  const CHAT_STYLE = {
-    chatStyle: {width: "100%", height: "100%", border: "none", backgroundColor: "#0e1116",
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif', fontSize: "14px"},
-    messageStyles: {
-      default: {
-        shared: {bubble: {maxWidth: "92%", lineHeight: "1.45", padding: "8px 12px"}},
-        user: {bubble: {backgroundColor: "#3b82f6", color: "#ffffff"}},
-        ai: {bubble: {backgroundColor: "#1c222b", color: "#e6edf3", border: "1px solid #2a313c"}},
+  // One conversation per video, kept in this browser (localStorage) so it survives reloads and restarts.
+  const C = {bg: "#0e1116", panel: "#161b22", panel2: "#1c222b", line: "#2a313c", text: "#e6edf3",
+    muted: "#8b949e", claude: "#d97757", user: "#262d38"};
+  const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+  const SUGGESTIONS = [
+    "Plan the changes for every open note",
+    "Which notes are unclear or contradict each other?",
+    "Write the Remotion code changes for the first note",
+    "Rewrite the voice-over lines the notes ask to change",
+  ];
+
+  const chats = new Map();  // video name → <deep-chat>
+  let codeTheme = "";
+
+  function storageOk() {
+    try { localStorage.setItem("video-review.probe", "1"); localStorage.removeItem("video-review.probe"); return true; } catch (_) { return false; }
+  }
+
+  function chatStyles() {
+    return {
+      chatStyle: {width: "100%", height: "100%", border: "none", backgroundColor: C.bg, fontFamily: FONT, fontSize: "14px"},
+      messageStyles: {
+        default: {
+          shared: {
+            outerContainer: {padding: "0 18px", marginTop: "14px"},
+            bubble: {lineHeight: "1.6", fontSize: "14px", padding: "0", maxWidth: "100%", borderRadius: "0", wordBreak: "break-word"},
+          },
+          ai: {bubble: {backgroundColor: "transparent", color: C.text, width: "calc(100% - 40px)", maxWidth: "none"}},
+          user: {bubble: {backgroundColor: C.user, color: C.text, padding: "9px 14px", borderRadius: "16px 16px 4px 16px",
+            maxWidth: "82%", border: `1px solid ${C.line}`}},
+        },
+        error: {bubble: {backgroundColor: "#2a1215", color: "#ffb4b5", border: "1px solid #ff4d4f66", borderRadius: "10px",
+          padding: "9px 14px", maxWidth: "calc(100% - 40px)", fontSize: "13px"}},
+        loading: {message: {styles: {bubble: {padding: "10px 4px", backgroundColor: "transparent"}}}},
+        intro: {bubble: {backgroundColor: "transparent", padding: "0", maxWidth: "100%", width: "100%"}},
       },
-      intro: {bubble: {backgroundColor: "#161b22", color: "#8b949e", border: "1px dashed #2a313c", maxWidth: "100%"}},
-      error: {bubble: {backgroundColor: "#3a1416", color: "#ffb4b5"}},
-      loading: {message: {styles: {bubble: {backgroundColor: "#1c222b"}}}},
-    },
-    inputAreaStyle: {backgroundColor: "#161b22", borderTop: "1px solid #2a313c"},
-    textInput: {
-      placeholder: {text: "Ask Claude about this review…", style: {color: "#8b949e"}},
-      styles: {container: {backgroundColor: "#0e1116", color: "#e6edf3", border: "1px solid #2a313c",
-        boxShadow: "none", width: "82%"}, text: {padding: "10px 12px"}},
-    },
-    submitButtonStyles: {submit: {container: {default: {backgroundColor: "transparent"}},
-      svg: {styles: {default: {filter: "invert(55%) sepia(72%) saturate(2900%) hue-rotate(205deg)"}}}}},
-    auxiliaryStyle: "::-webkit-scrollbar { width: 8px; } ::-webkit-scrollbar-thumb { background: #2a313c; border-radius: 4px; }"
-      + " a { color: #60a5fa; } pre { background: #0b0e13; padding: 8px; border-radius: 6px; overflow: auto; }",
-  };
+      avatars: {
+        ai: {src: "/static/claude-avatar.svg", styles: {avatar: {width: "26px", height: "26px", marginTop: "2px"},
+          container: {marginRight: "12px"}}},
+        user: {styles: {container: {display: "none"}}},
+      },
+      inputAreaStyle: {backgroundColor: C.bg, padding: "10px 14px 14px", borderTop: "none", boxSizing: "border-box"},
+      textInput: {
+        placeholder: {text: "Message Claude…   (Enter sends, Shift+Enter new line)", style: {color: "#6e7681"}},
+        characterLimit: 20000,
+        styles: {
+          container: {backgroundColor: C.panel, color: C.text, border: `1px solid ${C.line}`, borderRadius: "14px",
+            boxShadow: "0 1px 0 #0004", width: "100%", boxSizing: "border-box", margin: "0", minHeight: "46px", maxHeight: "40vh"},
+          text: {padding: "12px 48px 12px 14px", fontSize: "14px", lineHeight: "1.5"},
+          focus: {border: `1px solid ${C.claude}99`, boxShadow: `0 0 0 3px ${C.claude}22`},
+        },
+      },
+      submitButtonStyles: (() => {
+        // one geometry for every state, so the button never jumps; centred at the bottom-right of the input
+        const box = {position: "absolute", top: "auto", bottom: "8px", right: "8px", margin: "0", padding: "0", width: "30px",
+          height: "30px", borderRadius: "9px", display: "flex", alignItems: "center", justifyContent: "center", opacity: "1"};
+        const icon = (invert) => ({styles: {default: {width: "16px", height: "16px", strokeWidth: "2.2",
+          filter: `brightness(0) invert(${invert})`}}});
+        return {
+          position: "inside-end",
+          submit: {container: {default: {...box, backgroundColor: C.claude}, hover: {backgroundColor: "#e3896b"}}, svg: icon(1)},
+          loading: {container: {default: {...box, backgroundColor: C.panel2}}},
+          stop: {container: {default: {...box, backgroundColor: C.panel2, border: `1px solid ${C.line}`},
+            hover: {backgroundColor: C.line}}, svg: {styles: {default: {width: "13px", height: "13px", filter: "brightness(0) invert(0.9)"}}}},
+          disabled: {container: {default: {...box, backgroundColor: C.panel2}}, svg: icon(0.5)},
+        };
+      })(),
+      scrollButton: {styles: {default: {backgroundColor: C.panel2, border: `1px solid ${C.line}`, color: C.text}}},
+      auxiliaryStyle: chatCss(),
+    };
+  }
+
+  /** CSS inside Deep Chat's shadow DOM: typography, code blocks, tables, copy buttons, scrollbars */
+  function chatCss() {
+    return `${codeTheme}
+      #messages { padding-bottom: 12px; scrollbar-color: ${C.line} transparent; }
+      #messages::-webkit-scrollbar { width: 10px; } #messages::-webkit-scrollbar-thumb { background: ${C.line}; border-radius: 5px; border: 3px solid ${C.bg}; }
+      .ai-message-text > *:first-child, .user-message-text > *:first-child { margin-top: 0; }
+      .ai-message-text > *:last-child, .user-message-text > *:last-child { margin-bottom: 0; }
+      .ai-message-text p, .user-message-text p { margin: 0 0 .7em; }
+      .ai-message-text h1, .ai-message-text h2, .ai-message-text h3, .ai-message-text h4 { line-height: 1.3; margin: 1.1em 0 .45em; font-weight: 650; }
+      .ai-message-text h1 { font-size: 1.3em; } .ai-message-text h2 { font-size: 1.16em; } .ai-message-text h3, .ai-message-text h4 { font-size: 1.02em; }
+      .ai-message-text ul, .ai-message-text ol { margin: .3em 0 .8em; padding-left: 1.4em; }
+      .ai-message-text li { margin: .22em 0; } .ai-message-text li > p { margin: 0; }
+      .ai-message-text strong { color: #fff; font-weight: 650; }
+      .ai-message-text a, .user-message-text a { color: #79b8ff; text-decoration: none; } .ai-message-text a:hover { text-decoration: underline; }
+      .ai-message-text hr { border: none; border-top: 1px solid ${C.line}; margin: 1em 0; }
+      .ai-message-text blockquote { margin: .6em 0; padding: .1em 0 .1em .9em; border-left: 3px solid ${C.claude}; color: ${C.muted}; }
+      .ai-message-text code, .user-message-text code { font-family: ${MONO}; font-size: .88em; background: ${C.panel2};
+        border: 1px solid ${C.line}; border-radius: 5px; padding: .08em .35em; }
+      .ai-message-text pre, .user-message-text pre { position: relative; margin: .7em 0 .9em; background: #0b0e13;
+        border: 1px solid ${C.line}; border-radius: 10px; padding: 34px 14px 12px; overflow-x: auto; line-height: 1.5; }
+      .ai-message-text pre code, .user-message-text pre code { background: none; border: none; padding: 0; font-size: 12.5px; }
+      pre .code-lang { position: absolute; top: 8px; left: 14px; font: 11px ${MONO}; color: ${C.muted}; text-transform: lowercase; }
+      .ai-message-text table { border-collapse: collapse; margin: .6em 0 .9em; font-size: .94em; display: block; overflow-x: auto; }
+      .ai-message-text th, .ai-message-text td { border: 1px solid ${C.line}; padding: 5px 10px; text-align: left; vertical-align: top; }
+      .ai-message-text th { background: ${C.panel}; font-weight: 600; }
+      .vr-copy { font: 12px ${FONT}; color: ${C.muted}; background: ${C.panel}; border: 1px solid ${C.line}; border-radius: 6px;
+        padding: 2px 8px; cursor: pointer; }
+      .vr-copy:hover { color: ${C.text}; border-color: ${C.muted}; }
+      .vr-copy.done { color: #3fb950; border-color: #3fb95066; }
+      pre > .vr-copy { position: absolute; top: 6px; right: 6px; opacity: 0; transition: opacity .15s; }
+      pre:hover > .vr-copy, pre > .vr-copy:focus-visible, pre > .vr-copy.done { opacity: 1; }
+      .vr-actions { display: flex; gap: 6px; margin-top: 8px; opacity: 0; transition: opacity .15s; }
+      .outer-message-container:hover .vr-actions, .vr-actions:focus-within { opacity: 1; }
+      .vr-intro { padding: 18px 6px 4px; }
+      .vr-intro h3 { margin: 0 0 6px; font-size: 17px; font-weight: 650; color: ${C.text}; }
+      .vr-intro p { margin: 0 0 14px; color: ${C.muted}; line-height: 1.55; }
+      .vr-suggestions { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+      .vr-suggestions .deep-chat-button.deep-chat-suggestion-button { text-align: left; font: 13px/1.4 ${FONT} !important;
+        color: ${C.text} !important; background: ${C.panel} !important; border: 1px solid ${C.line} !important;
+        border-radius: 10px !important; padding: 10px 12px !important; cursor: pointer; margin: 0 !important; box-shadow: none !important;
+        transition: border-color .15s, background .15s; }
+      .vr-suggestions .deep-chat-button.deep-chat-suggestion-button:hover { border-color: ${C.claude}aa !important; background: #d977571a !important; }
+      .loading-message-dots, .deep-chat-loading-message-dots-container { --loading-message-color: ${C.claude}; --loading-message-color-fade: #d9775733; }
+      .error-message-text { white-space: pre-line; }
+    `;
+  }
+
+  function introHtml() {
+    const buttons = SUGGESTIONS.map((t) => `<button class="deep-chat-button deep-chat-suggestion-button">${t}</button>`).join("");
+    return `<div class="vr-intro deep-chat-temporary-message"><h3>Ask Claude about this review</h3>
+      <p>Claude sees your open notes, the frame of each note with your mark, and the voice-over line.
+      Answers are per note number. Your conversation is kept in this browser, one per video.</p>
+      <div class="vr-suggestions">${buttons}</div></div>`;
+  }
+
+  /** add copy buttons to code blocks and to finished answers (Deep Chat re-renders while streaming) */
+  function decorate(chat) {
+    const root = chat.shadowRoot;
+    if (!root) return;
+    const copyButton = (getText, label = "Copy") => {
+      const b = document.createElement("button");
+      b.className = "vr-copy"; b.type = "button"; b.textContent = label;
+      b.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        try { await navigator.clipboard.writeText(getText()); b.textContent = "Copied"; b.classList.add("done"); }
+        catch (_) { b.textContent = "Copy failed"; }
+        setTimeout(() => { b.textContent = label; b.classList.remove("done"); }, 1400);
+      });
+      return b;
+    };
+    for (const pre of root.querySelectorAll(".ai-message-text pre, .user-message-text pre")) {
+      if (pre.querySelector(":scope > .vr-copy")) continue;
+      const code = pre.querySelector("code");
+      const lang = code && [...code.classList].find((c) => c.startsWith("language-"));
+      if (lang && !pre.querySelector(":scope > .code-lang")) {
+        const tag = document.createElement("span"); tag.className = "code-lang"; tag.textContent = lang.slice(9); pre.prepend(tag);
+      }
+      pre.append(copyButton(() => (code || pre).innerText));
+    }
+    const streaming = chat.dataset.streaming === "1";
+    const bubbles = [...root.querySelectorAll(".ai-message-text")];
+    bubbles.forEach((bubble, i) => {
+      if (bubble.querySelector(":scope > .vr-actions, .vr-intro") || bubble.classList.contains("error-message-text")) return;
+      if (streaming && i === bubbles.length - 1) return;  // the answer is still arriving
+      if (!bubble.textContent.trim()) return;
+      const bar = document.createElement("div"); bar.className = "vr-actions";
+      bar.append(copyButton(() => {
+        const clone = bubble.cloneNode(true);
+        clone.querySelectorAll(".vr-actions, .vr-copy, .code-lang").forEach((n) => n.remove());
+        return clone.innerText.trim();
+      }, "Copy answer"));
+      bubble.append(bar);
+    });
+  }
 
   function renderChatBar() {
     const c = (ui.status || {}).chat || {};
@@ -309,34 +458,113 @@
     if (!select.options.length && c.models) {
       for (const m of c.models) select.append(new Option(m.name, m.id, m.id === c.model, m.id === c.model));
     }
-    $("chatKeyBtn").textContent = c.configured ? (c.source === "environment" ? "Key: ANTHROPIC_API_KEY" : "Key: set") : "Set API key";
+    $("chatKeyText").textContent = c.configured ? (c.source === "environment" ? "Key from ANTHROPIC_API_KEY" : "API key set") : "Add API key";
+    $("chatKeyDot").className = `dot ${c.configured ? "on" : "off"}`;
     $("chatKeyBtn").disabled = !c.enabled || c.source === "environment";
     $("keyForget").hidden = c.source !== "page";
-    $("chatSend").disabled = !c.enabled || !c.configured || !review().name;
+    const ready = c.enabled && review().name;
+    $("chatSend").disabled = !ready || !c.configured;
+    $("chatNew").disabled = !ready;
+    renderContext();
   }
 
-  function ensureChat() {
-    ui.chatReady = ui.chatReady || createChat().catch((err) => { ui.chatReady = null; throw err; });
-    return ui.chatReady;
+  function renderContext() {
+    const r = review();
+    const include = $("chatReview").checked;
+    if (!r.name) { $("chatContext").textContent = "Open a video to chat about its review."; return; }
+    const notes = r.openNotes(), shots = Math.min(r.openShots(), 20);
+    $("chatContext").textContent = include
+      ? `Claude sees ${notes} open note${notes === 1 ? "" : "s"}${shots ? ` and ${shots} screenshot${shots === 1 ? "" : "s"}` : ""} of ${r.name}`
+      : `The review of ${r.name} is not shared: only your messages are sent`;
+    $("chatContext").parentElement.classList.toggle("off", !include);
+  }
+  $("chatReview").onchange = renderContext;
+  document.addEventListener("review:saved", () => { if (!$("paneChat").hidden) renderContext(); });
+
+  function loadCodeTheme() {
+    if (codeTheme) return Promise.resolve();
+    return fetch("/static/vendor/highlight/github-dark.min.css").then((r) => r.text())
+      .then((css) => { codeTheme = css.replace(/\.hljs\{[^}]*\}/, ".hljs{color:#e6edf3;background:transparent}"); })
+      .catch(() => { codeTheme = " "; });
   }
 
-  async function createChat() {
-    await import("/static/vendor/deep-chat/deepChat.bundle.js");
+  function loadLibraries() {
+    ui.libs = ui.libs || (async () => {
+      if (!window.hljs) await loadScript("/static/vendor/highlight/highlight.min.js").catch(() => null);
+      if (window.hljs) {  // Remotion code is mostly TSX / JSX
+        window.hljs.registerAliases(["tsx", "mts", "cts"], {languageName: "typescript"});
+        window.hljs.registerAliases(["jsx", "mjs", "cjs"], {languageName: "javascript"});
+      }
+      await Promise.all([import("/static/vendor/deep-chat/deepChat.bundle.js"), loadCodeTheme()]);
+    })().catch((err) => { ui.libs = null; throw err; });
+    return ui.libs;
+  }
+
+  /** syntax colours for code blocks (Deep Chat's Markdown renderer calls this; hljs escapes the code) */
+  function highlightCode(code, lang) {
+    const hljs = window.hljs;
+    if (!hljs || !lang || !hljs.getLanguage(lang)) return "";  // "" = plain, escaped by the renderer
+    try { return hljs.highlight(code, {language: lang, ignoreIllegals: true}).value; } catch (_) { return ""; }
+  }
+
+  function createChat(name) {
     const chat = document.createElement("deep-chat");
-    Object.assign(chat, CHAT_STYLE);
-    chat.connect = {url: "/api/claude/chat", stream: true, headers: {"X-Review-Token": token()}};
-    chat.requestBodyLimits = {maxMessages: -1};  // send the whole conversation, the API is stateless
-    chat.remarkable = {html: false, breaks: true};
-    chat.introMessage = {text: "Ask anything about the review of the current video. With “include review” on, "
-      + "Claude gets the open notes and their screenshots with your first message. “Send review” asks for a plan per note."};
-    // the current video, model and review switch are read for every message
-    chat.requestInterceptor = (details) => {
-      details.body = {...details.body, video: review().name || "", model: $("chatModel").value,
-        review: $("chatReview").checked};
+    Object.assign(chat, chatStyles());
+    const path = (review().config || {}).reviewPath || name;
+    if (storageOk()) chat.browserStorage = {key: `video-review.chat.v1:${path}`, maxMessages: 200};
+    chat.connect = {url: "/api/claude/chat", stream: true};
+    chat.requestBodyLimits = {maxMessages: -1};  // the API is stateless: send the whole conversation
+    chat.remarkable = {html: false, breaks: false, typographer: true, langPrefix: "hljs language-", highlight: highlightCode};
+    chat.introMessage = {html: introHtml()};
+    chat.errorMessages = {displayServiceErrorMessages: true,
+      overrides: {default: "Could not reach the review server. Is video-review still running? Then try again."}};
+    // read for every message: a fresh token (the server may have restarted), the model and the review switch
+    chat.requestInterceptor = async (details) => {
+      await refreshStatus().catch(() => null);  // cheap and local: picks up a restarted server's token
+      if (ui.status && ui.status.chat && !ui.status.chat.configured) { $("keyForm").hidden = false; }
+      renderChatBar();
+      details.headers = {...(details.headers || {}), "X-Review-Token": token()};
+      details.body = {...details.body, video: name, model: $("chatModel").value, review: $("chatReview").checked};
+      chat.dataset.streaming = "1";
       return details;
     };
-    $("chatHost").replaceChildren(chat);
-    ui.chat = chat;
+    chat.onMessage = ({isHistory}) => { if (!isHistory) { chat.dataset.streaming = "0"; scheduleDecorate(chat); } };
+    chat.onError = () => { chat.dataset.streaming = "0"; scheduleDecorate(chat); };
+    chat.onComponentRender = () => {
+      scheduleDecorate(chat);
+      if (!chat._observer && chat.shadowRoot) {
+        chat._observer = new MutationObserver(() => scheduleDecorate(chat));
+        chat._observer.observe(chat.shadowRoot, {childList: true, subtree: true});
+      }
+    };
+    chat.dataset.video = name;
+    return chat;
+  }
+
+  function scheduleDecorate(chat) {
+    if (chat._decorating) return;
+    chat._decorating = true;
+    requestAnimationFrame(() => {
+      chat._observer && chat._observer.disconnect();
+      try { decorate(chat); } finally {
+        chat._decorating = false;
+        chat._observer && chat._observer.observe(chat.shadowRoot, {childList: true, subtree: true});
+      }
+    });
+  }
+
+  /** the conversation of the current video (created on first use, kept while the page is open) */
+  async function currentChat() {
+    const name = review().name;
+    if (!name) return null;
+    await loadLibraries();
+    let chat = chats.get(name);
+    if (!chat) {
+      chat = createChat(name);
+      chats.set(name, chat);
+      $("chatHost").append(chat);
+    }
+    for (const other of chats.values()) other.hidden = other !== chat;
     return chat;
   }
 
@@ -344,19 +572,22 @@
     const c = (ui.status || {}).chat;
     renderChatBar();
     if (!c || !c.enabled) {
-      message("chatMsg", c ? `The chat is off: ${c.reason}.` : "The server did not answer.", "warn");
+      message("chatMsg", c ? `The chat is off: ${c.reason}.` : "The server did not answer. Is video-review still running?", "warn");
       $("keyForm").hidden = true;
       return;
     }
-    message("chatMsg", "");
+    message("chatMsg", review().name ? "" : "Open or upload a video to chat about its review.");
     $("keyForm").hidden = c.configured;
     try {
-      await ensureChat();
+      const chat = await currentChat();
+      if (chat && c.configured && chat.focusInput) setTimeout(() => chat.focusInput(), 50);
     } catch (err) {
       message("chatMsg", `Could not load the chat: ${err.message}`, "error");
     }
     if (!c.configured) $("keyInput").focus();
   }
+
+  document.addEventListener("review:video", () => { if (!drawer.hidden && ui.tab === "chat") showChat(); });
 
   $("chatKeyBtn").onclick = () => { $("keyForm").hidden = !$("keyForm").hidden; if (!$("keyForm").hidden) $("keyInput").focus(); };
   $("keyForm").addEventListener("submit", async (e) => {
@@ -368,6 +599,8 @@
       $("keyInput").value = "";
       $("keyForm").hidden = true;
       message("chatMsg", "");
+      const chat = await currentChat();
+      if (chat && chat.focusInput) chat.focusInput();
     } catch (err) {
       message("chatMsg", err.message, "error");
     }
@@ -379,14 +612,25 @@
     renderChatBar();
   };
 
+  $("chatNew").onclick = async () => {
+    const chat = await currentChat();
+    if (!chat) return;
+    const messages = chat.getMessages ? chat.getMessages() : [];
+    if (messages.length && !confirm(`Start a new chat about ${review().name}? This conversation is deleted.`)) return;
+    chat.dataset.streaming = "0";
+    chat.clearMessages(true);
+    if (chat.focusInput) chat.focusInput();
+  };
+
   $("chatSend").onclick = async () => {
     if (!review().name) return;
     await review().save();
-    const chat = await ensureChat();
+    const chat = await currentChat();
     $("chatReview").checked = true;
+    renderContext();
     const open = review().openNotes();
-    chat.submitUserMessage({text: `Please go through the ${open} open note(s) of my review of ${review().name} `
-      + "and tell me per note number what to change, and which notes are unclear."});
+    chat.submitUserMessage({text: `Please go through the ${open} open note${open === 1 ? "" : "s"} of my review of `
+      + `${review().name}. For each note number, tell me exactly what to change, and list the notes that are unclear.`});
   };
 
   // ── "✦ Send to Claude" in the notes panel ────────────────────────────────────────────────

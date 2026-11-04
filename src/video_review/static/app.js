@@ -118,6 +118,7 @@
       video.removeAttribute("src"); video.load();
       showEmpty(true);
       render(); renderMarkers(); tick();
+      document.dispatchEvent(new CustomEvent("review:video", {detail: {name}}));
       return;
     }
     showEmpty(false);
@@ -141,6 +142,7 @@
     }
     renderVideoSelect();
     render(); renderMarkers(); tick();
+    document.dispatchEvent(new CustomEvent("review:video", {detail: {name}}));
   }
 
   function showEmpty(empty) {
@@ -571,6 +573,7 @@
       setStatus(`✓ Saved ${new Date().toLocaleTimeString()} · ${doc.notes.length} note(s), ${open} open`, "ok");
       const entry = state.workspace && state.workspace.videos.find((v) => v.name === name);
       if (entry) { entry.notes = doc.notes.length; entry.open = open; renderVideoSelect(); }
+      document.dispatchEvent(new CustomEvent("review:saved", {detail: {name}}));
     } catch (err) {
       state.dirty = true;
       setStatus(`Save failed: ${err.message}`, "error");
@@ -673,6 +676,7 @@
     get config() { return state.config; },
     get workspace() { return state.workspace; },
     openNotes: () => state.notes.filter((n) => n.status !== "done").length,
+    openShots: () => state.notes.filter((n) => n.status !== "done" && n.shot).length,
     save: async () => { if (state.dirty || state.saving) await save(); },
     codePrompt,
     setStatus,

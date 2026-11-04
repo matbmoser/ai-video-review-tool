@@ -251,8 +251,38 @@ body.drawer-full .drawer-resize { display: none; }
 .term { flex: 1; min-height: 0; padding: 6px 0 0 8px; background: #0b0e13; }
 .term[hidden] { display: none; }
 .term .xterm { height: 100%; }
-.chat-host { flex: 1; min-height: 0; display: flex; }
-.chat-host deep-chat { flex: 1; display: block; }
+.chat-host { flex: 1; min-height: 0; display: flex; background: var(--bg); }
+.chat-host deep-chat { flex: 1; display: block; min-width: 0; }
+.chat-host deep-chat[hidden] { display: none; }
+
+/* chat toolbar */
+.chat-bar { gap: 8px; }
+.model-select { font-weight: 600; padding: 5px 8px; }
+button.chip { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 4px 11px; font-size: 12px; color: var(--muted); }
+button.chip:hover:not(:disabled) { color: var(--text); }
+button.chip:disabled { opacity: 1; cursor: default; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: var(--ok); box-shadow: 0 0 0 3px #22c55e22; }
+.dot.off { background: var(--warn); box-shadow: 0 0 0 3px #f59e0b22; }
+
+/* what Claude sees */
+.context-strip {
+  display: flex; align-items: center; gap: 10px; margin: 0; padding: 8px 14px; cursor: pointer;
+  border-bottom: 1px solid var(--line); background: linear-gradient(90deg, #d977570d, transparent 70%);
+  font-size: 12.5px; color: var(--text);
+}
+.context-strip.off { background: none; color: var(--muted); }
+.context-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+input.switch {
+  appearance: none; -webkit-appearance: none; flex: none; width: 30px; height: 17px; margin: 0; border-radius: 999px;
+  background: var(--line); position: relative; cursor: pointer; transition: background .15s;
+}
+input.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%;
+  background: #fff; transition: transform .15s;
+}
+input.switch:checked { background: var(--claude); }
+input.switch:checked::after { transform: translateX(13px); }
 
 .key-form { padding: 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
 .key-form[hidden] { display: none; }
