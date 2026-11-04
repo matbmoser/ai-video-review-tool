@@ -56,3 +56,14 @@ def test_serves_until_interrupted(video_file, monkeypatch, capsys, use_folder):
     out = capsys.readouterr().out
     assert started.is_set() and "open" in out and "stopped" in out
     assert ("?video=demo.mp4" in out) is (not use_folder)
+
+
+def test_mcp_mode_speaks_json_rpc_on_stdout(video_file, monkeypatch, capsys):
+    import io
+    import json
+    msg = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_video_reviews", "arguments": {}}}
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(msg) + "\n"))
+    assert main([str(video_file.parent), "--mcp"]) == 0
+    out = capsys.readouterr()
+    reply = json.loads(out.out.strip())  # stdout carries only protocol messages
+    assert "demo.mp4" in reply["result"]["content"][0]["text"] and "MCP server" in out.err

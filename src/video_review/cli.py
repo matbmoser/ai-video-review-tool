@@ -21,6 +21,7 @@ examples:
   video-review renders/                 review the videos in renders/
   video-review out/video.mp4 --open     review one video
   video-review out/video.mp4 --transcript voice/timeline.json --fps 30
+  video-review renders/ --mcp           MCP server for Claude (desktop app, Claude Code)
 
 Each video gets a review folder next to it (<video>.review/ with notes.json, REVIEW.md and shots/).
 Point your AI agent at REVIEW.md to implement the changes.
@@ -50,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-upload", action="store_true", help="do not allow uploading videos or transcripts")
     p.add_argument("--max-upload-mb", type=int, default=DEFAULT_MAX_UPLOAD_BYTES // 1024 ** 2,
                    help="largest video that can be uploaded, in MB (default: %(default)s)")
+    p.add_argument("--mcp", action="store_true",
+                   help="run as an MCP server on stdin/stdout instead of the web page, so Claude can read the reviews")
     p.add_argument("--export-markdown", action="store_true",
                    help="only regenerate REVIEW.md of VIDEO from its notes.json and exit")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -96,6 +99,10 @@ def main(argv: list[str] | None = None) -> int:
             except TranscriptError as exc:
                 return _fail(str(exc))
             workspace.pin_transcript(video.name, args.transcript.expanduser())
+
+    if args.mcp:
+        from .mcp import run as run_mcp  # stdout is the protocol channel: print nothing else
+        return run_mcp(workspace)
 
     if args.export_markdown:
         store = workspace.store(video.name)
