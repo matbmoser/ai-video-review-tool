@@ -97,7 +97,7 @@
       <footer class="side-foot">
         <div class="actions">
           <button class="act primary" id="save" title="Notes are also saved automatically"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span>Save</span></button>
-          <button class="act claude" id="sendClaude" title="Open the Claude panel and send the review to Claude Code (or to the API chat)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c.5 4.2 1.1 6.2 2.3 7.3 1.2 1.1 3.2 1.7 7.2 1.7-4 .1-6 .7-7.2 1.9-1.2 1.2-1.8 3.2-2.3 6.6-.5-3.4-1.1-5.4-2.3-6.6-1.2-1.2-3.2-1.8-7.2-1.9 4 0 6-.6 7.2-1.7 1.2-1.1 1.8-3.1 2.3-7.3z"/></svg><span>Send to Claude</span></button>
+          <button class="act claude" id="sendClaude" title="Open the Claude panel and send the review to Claude Code (or to the API chat)"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c.5 4.2 1.1 6.2 2.3 7.3 1.2 1.1 3.2 1.7 7.2 1.7-4 .1-6 .7-7.2 1.9-1.2 1.2-1.8 3.2-2.3 6.6-.5-3.4-1.1-5.4-2.3-6.6-1.2-1.2-3.2-1.8-7.2-1.9 4 0 6-.6 7.2-1.7 1.2-1.1 1.8-3.1 2.3-7.3z"/></svg><span><span class="wide">Send to </span>Claude</span></button>
           <div class="menu-wrap">
             <button class="act" id="exportBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="exportMenu"
                     title="Copy the review for Claude, or download it"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 006.5 20h11a1.5 1.5 0 001.5-1.5V14"/></svg><span>Export</span><svg class="i chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
@@ -168,21 +168,21 @@
       </label>
       <div class="pane-msg" id="chatMsg" hidden></div>
       <div class="chat-host" id="chatHost">
-        <div class="chat-list" id="chatList" hidden role="dialog" aria-label="Conversations">
-          <div class="chat-list-head">
-            <h3>Conversations</h3>
-            <button id="chatListNew" title="Start a new conversation about this video">＋ New</button>
-            <button class="icon" id="chatListClose" title="Close the list" aria-label="Close">✕</button>
-          </div>
-          <input class="search" id="chatSearch" type="search" placeholder="Search conversations" aria-label="Search conversations">
-          <div class="chat-items" id="chatItems"></div>
-        </div>
         <div class="chat-lock" id="chatLock" hidden>
           <span class="lock-text"><span aria-hidden="true">🔑</span><span>Add your Anthropic API key to start chatting.</span></span>
           <button class="primary" id="chatLockKey">Add API key</button>
         </div>
       </div>
     </section>
+    <div class="chat-list" id="chatList" hidden role="dialog" aria-label="Conversations">
+      <div class="chat-list-head">
+        <h3>Conversations <span class="muted" id="chatListInfo"></span></h3>
+        <button id="chatListNew" title="Start a new conversation about this video">＋ New</button>
+        <button class="icon" id="chatListClose" title="Close the list" aria-label="Close">✕</button>
+      </div>
+      <input class="search" id="chatSearch" type="search" placeholder="Search conversations" aria-label="Search conversations">
+      <div class="chat-items" id="chatItems"></div>
+    </div>
   </aside>
 
   <div class="dropzone" id="dropzone" hidden><div>Drop to upload</div></div>

@@ -713,6 +713,7 @@
     const mine = index.chats.filter((c) => c.scope === scope);
     $("chatCount").textContent = String(mine.length);
     if ($("chatList").hidden) return;
+    $("chatListInfo").textContent = `${index.chats.length} in this browser`;
     const q = $("chatSearch").value.trim().toLowerCase();
     const match = (c) => !q || `${c.title} ${c.video}`.toLowerCase().includes(q);
     const videos = ((review().workspace || {}).videos || []).map((v) => v.name);
@@ -813,7 +814,8 @@
   function renderContext() {
     const r = review();
     const include = $("chatReview").checked;
-    if (!r.name) { $("chatContext").textContent = "Open a video to chat about its review."; return; }
+    $("chatContext").parentElement.hidden = !r.name;  // the message above the chat says it already
+    if (!r.name) return;
     const notes = r.openNotes(), shots = Math.min(r.openShots(), 20);
     $("chatContext").textContent = include
       ? `Claude sees ${notes} open note${notes === 1 ? "" : "s"}${shots ? ` and ${shots} screenshot${shots === 1 ? "" : "s"}` : ""} of ${r.name}`

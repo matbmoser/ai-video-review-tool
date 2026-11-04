@@ -234,7 +234,7 @@ a.btn-link svg.i { color: var(--muted); }
   justify-content: space-between; align-items: flex-end; gap: 6px 24px; font-size: 12px; color: var(--muted);
 }
 .credits { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.page-foot .license { text-align: right; line-height: 1.5; }
+.page-foot .license { line-height: 1.5; }
 .page-foot .browser-note { flex-basis: 100%; }
 .credits a, .coffee-dialog a { color: var(--blue); }
 .heart { color: var(--accent); }
@@ -377,10 +377,16 @@ input.switch:checked::after { transform: translateX(13px); }
 .chat-lock .lock-text { display: flex; align-items: center; gap: 8px; min-width: 0; }
 
 /* the list of conversations */
-.chat-list {
-  position: absolute; inset: 0 auto 0 0; width: min(360px, 100%); z-index: 4; display: flex; flex-direction: column;
-  background: var(--panel); border-right: 1px solid var(--line); box-shadow: 12px 0 30px #0007;
+.chat-list {  /* covers the whole Claude panel */
+  position: absolute; inset: 0; z-index: 20; display: flex; flex-direction: column;
+  background: var(--panel); animation: vr-menu .12s ease-out;
 }
+.chat-list-head { border-bottom: 1px solid var(--line); min-height: 50px; padding: 8px 10px 8px 16px !important; }
+.chat-list-head h3 { font-size: 15px !important; }
+.chat-list-head h3 .muted { font-weight: 400; font-size: 12.5px; margin-left: 6px; }
+.chat-list input.search { margin: 10px 12px 6px !important; height: 36px !important; }
+.chat-items { padding: 0 10px 14px !important; }
+.chat-item { padding: 10px 10px 10px 12px !important; }
 .chat-list[hidden] { display: none; }
 .chat-list-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px; }
 .chat-list-head h3 { margin: 0; font-size: 14px; flex: 1; }
@@ -495,3 +501,4 @@ button.claude-btn:hover:not(:disabled) { color: #fff; }
 .note.active:hover { border-color: var(--accent); }
 .note img:hover { filter: brightness(1.08); }
 button.icon:hover:not(:disabled) { color: var(--text); }
+@container foot (max-width: 320px) { button.act { padding: 0 9px; gap: 6px; font-size: 12.5px; } button.act .wide { display: none; } }
