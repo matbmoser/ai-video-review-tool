@@ -245,7 +245,7 @@ More in **[docs/usage.md](docs/usage.md)**, including the transcript formats and
 
 If this tool saves you time, you can [buy me a coffee with PayPal](https://paypal.me/mathiasbrunkowmoser). Thank you!
 
-<a href="https://paypal.me/mathiasbrunkowmoser"><img src="docs/images/buymeacoffeepaypal.png" alt="PayPal QR code: buy me a coffee" width="160"></a>
+<a href="https://paypal.me/mathiasbrunkowmoser"><img src="docs/images/buymeacoffeepaypal.jpeg" alt="PayPal QR code: buy me a coffee" width="160"></a>
 
 ## License
 
